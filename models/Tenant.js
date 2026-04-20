@@ -1,13 +1,15 @@
 const mongoose = require('mongoose');
 
 const tenantSchema = new mongoose.Schema({
-  fullName: String,
+  name: String,
   phone: String,
-  nationalId: String,
-  houseNumber: String,
-  monthlyRent: Number,
-  deposit: Number,
+  idNumber: String,
+  house: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "House",
+    default: null
+  },
   status: { type: String, default: "active" }
-});
+}, { timestamps: true });
 
-module.exports = mongoose.model('Tenant', tenantSchema);
+module.exports = mongoose.model("Tenant", tenantSchema);

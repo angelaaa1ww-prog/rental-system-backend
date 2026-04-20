@@ -1,31 +1,35 @@
 const express = require('express');
 const router = express.Router();
-
-const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const Admin = require('../models/Admin');
+const bcrypt = require('bcryptjs');
 
-router.post('/register', async (req, res) => {
-  const hash = await bcrypt.hash(req.body.password, 10);
+const SECRET = "mysecretkey"; // later move to .env
 
-  const admin = await Admin.create({
-    username: req.body.username,
-    password: hash
-  });
+// FAKE USER (for now)
+const user = {
+  email: "admin@test.com",
+  password: bcrypt.hashSync("1234", 10)
+};
 
-  res.json(admin);
-});
-
+// LOGIN
 router.post('/login', async (req, res) => {
-  const admin = await Admin.findOne({ username: req.body.username });
+  const { email, password } = req.body;
 
-  if (!admin) return res.status(400).json({ msg: "No user" });
+  if (email !== user.email) {
+    return res.status(400).json({ message: "User not found" });
+  }
 
-  const ok = await bcrypt.compare(req.body.password, admin.password);
+  const isMatch = await bcrypt.compare(password, user.password);
 
-  if (!ok) return res.status(401).json({ msg: "Wrong password" });
+  if (!isMatch) {
+    return res.status(400).json({ message: "Invalid credentials" });
+  }
 
-  const token = jwt.sign({ id: admin._id }, "secret_key");
+  const token = jwt.sign(
+    { role: "admin" },
+    SECRET,
+    { expiresIn: "1d" }
+  );
 
   res.json({ token });
 });
