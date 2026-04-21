@@ -3,15 +3,14 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
-const SECRET = "mysecretkey"; // later move to .env
+const SECRET = "mysecretkey";
 
-// FAKE USER (for now)
+// fake user (temporary)
 const user = {
   email: "admin@test.com",
   password: bcrypt.hashSync("1234", 10)
 };
 
-// LOGIN
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
 
@@ -26,12 +25,15 @@ router.post('/login', async (req, res) => {
   }
 
   const token = jwt.sign(
-    { role: "admin" },
+    { email: user.email, role: "admin" },
     SECRET,
     { expiresIn: "1d" }
   );
 
-  res.json({ token });
+  res.json({
+    token,
+    role: "admin"
+  });
 });
 
 module.exports = router;

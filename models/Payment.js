@@ -3,26 +3,17 @@ const mongoose = require('mongoose');
 const paymentSchema = new mongoose.Schema({
   tenant: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "Tenant",
-    required: true
+    ref: "Tenant"
   },
   house: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "House",
-    required: true
+    ref: "House"
   },
   amount: {
     type: Number,
     required: true
   },
-  month: {
-    type: String,
-    required: true
-  },
-  status: {
-    type: String,
-    default: "paid"
-  }
+  month: String
 }, { timestamps: true });
 
-module.exports = mongoose.model("Payment", paymentSchema);
+module.exports = mongoose.model('Payment', paymentSchema);

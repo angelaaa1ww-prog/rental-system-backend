@@ -4,28 +4,34 @@ const router = express.Router();
 const Tenant = require('../models/Tenant');
 const House = require('../models/House');
 const Payment = require('../models/Payment');
-const auth = require('../middleware/auth');
+const auth = require('../middleware/authMiddleware');
 
+// =====================
+// DASHBOARD STATS
+// =====================
 router.get('/', auth, async (req, res) => {
   try {
+    // 1. Count tenants
     const totalTenants = await Tenant.countDocuments();
-    const totalHouses = await House.countDocuments();
-    const occupiedHouses = await House.countDocuments({ status: "occupied" });
-    const vacantHouses = await House.countDocuments({ status: "vacant" });
 
+    // 2. Count houses
+    const totalHouses = await House.countDocuments();
+
+    // 3. Sum revenue from payments
     const payments = await Payment.find();
-    const totalRevenue = payments.reduce((sum, p) => sum + p.amount, 0);
+
+    const totalRevenue = payments.reduce((sum, p) => {
+      return sum + (p.amount || 0);
+    }, 0);
 
     res.json({
       totalTenants,
       totalHouses,
-      occupiedHouses,
-      vacantHouses,
       totalRevenue
     });
 
   } catch (err) {
-    res.status(500).json(err);
+    res.status(500).json({ message: err.message });
   }
 });
 
