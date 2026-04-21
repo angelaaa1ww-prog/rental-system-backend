@@ -1,42 +1,26 @@
 require('dotenv').config();
-
 const express = require('express');
 const cors = require('cors');
 const connectDB = require('./config/db');
 
-// routes
-const tenantRoutes = require('./routes/tenantRoutes');
-const paymentRoutes = require('./routes/paymentRoutes');
-const houseRoutes = require('./routes/houseRoutes');
-const reportRoutes = require('./routes/reportRoutes');
-const dashboardRoutes = require('./routes/dashboardRoutes');
-const authRoutes = require('./routes/authRoutes');
-
 const app = express();
 
-// middleware
 app.use(cors());
 app.use(express.json());
 
-// connect DB
 connectDB();
 
 // routes
-app.use('/api/auth', authRoutes);
-app.use('/api/tenants', tenantRoutes);
-app.use('/api/payments', paymentRoutes);
-app.use('/api/houses', houseRoutes);
-app.use('/api/reports', reportRoutes);
-app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/tenants', require('./routes/tenantRoutes'));
+app.use('/api/houses', require('./routes/houseRoutes'));
+app.use('/api/payments', require('./routes/paymentRoutes'));
+app.use('/api/rent', require('./routes/rentRoutes'));
+app.use('/api/dashboard', require('./routes/dashboardRoutes'));
 
-// test route
 app.get('/', (req, res) => {
-  res.send('Rental System API Running');
+  res.json({ status: "Rental System API Running" });
 });
 
-// start server
 const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on ${PORT}`));

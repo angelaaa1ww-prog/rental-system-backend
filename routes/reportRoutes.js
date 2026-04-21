@@ -1,28 +1,42 @@
 const express = require('express');
 const router = express.Router();
 
-const Tenant = require('../models/Tenant');
 const Payment = require('../models/Payment');
-const auth = require('../middleware/auth');
+const Tenant = require('../models/Tenant');
+const auth = require('../middleware/authMiddleware');
 
-// GET TENANTS WITH NO PAYMENT FOR A MONTH
-router.get('/arrears/:month', auth, async (req, res) => {
+
+// =====================
+// UNPAID / OVERDUE REPORT
+// =====================
+router.get('/unpaid', auth, async (req, res) => {
   try {
-    const { month } = req.params;
+    const tenants = await Tenant.find().populate('house');
 
-    const tenants = await Tenant.find();
+    const payments = await Payment.find();
 
-    const payments = await Payment.find({ month });
+    const report = tenants.map(tenant => {
+      const tenantPayments = payments.filter(
+        p => p.tenant.toString() === tenant._id.toString()
+      );
 
-    const paidTenantIds = payments.map(p => p.tenant.toString());
+      const lastPayment = tenantPayments.sort(
+        (a, b) => new Date(b.paidAt) - new Date(a.paidAt)
+      )[0];
 
-    const arrears = tenants.filter(t =>
-      !paidTenantIds.includes(t._id.toString())
-    );
+      return {
+        tenant: tenant.name,
+        phone: tenant.phone,
+        house: tenant.house?.houseNumber || "NOT ASSIGNED",
+        lastPaidMonth: lastPayment?.month || "NEVER PAID",
+        lastPaidAmount: lastPayment?.amount || 0
+      };
+    });
 
-    res.json(arrears);
+    res.json(report);
+
   } catch (err) {
-    res.status(500).json(err);
+    res.status(500).json({ message: err.message });
   }
 });
 

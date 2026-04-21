@@ -6,32 +6,50 @@ const House = require('../models/House');
 const Payment = require('../models/Payment');
 const auth = require('../middleware/authMiddleware');
 
+
 // =====================
-// DASHBOARD STATS
+// DASHBOARD STATS (OPTIMIZED + SCALABLE)
 // =====================
 router.get('/', auth, async (req, res) => {
   try {
-    // 1. Count tenants
-    const totalTenants = await Tenant.countDocuments();
+    const [
+      totalTenants,
+      totalHouses,
+      occupiedHouses,
+      availableHouses,
+      revenueResult
+    ] = await Promise.all([
+      Tenant.countDocuments(),
+      House.countDocuments(),
+      House.countDocuments({ status: "occupied" }),
+      House.countDocuments({ status: "available" }),
 
-    // 2. Count houses
-    const totalHouses = await House.countDocuments();
+      // 🔥 AGGREGATION (NO MEMORY LOAD)
+      Payment.aggregate([
+        {
+          $group: {
+            _id: null,
+            total: { $sum: "$amount" }
+          }
+        }
+      ])
+    ]);
 
-    // 3. Sum revenue from payments
-    const payments = await Payment.find();
-
-    const totalRevenue = payments.reduce((sum, p) => {
-      return sum + (p.amount || 0);
-    }, 0);
+    const totalRevenue = revenueResult[0]?.total || 0;
 
     res.json({
       totalTenants,
       totalHouses,
+      occupiedHouses,
+      availableHouses,
       totalRevenue
     });
 
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({
+      message: "Dashboard error",
+      error: err.message
+    });
   }
 });
 
