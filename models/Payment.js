@@ -13,22 +13,37 @@ const paymentSchema = new mongoose.Schema({
     required: true
   },
 
-  amount: {
-    type: Number,
-    required: true,
-    min: 0
-  },
-
   month: {
     type: String,
-    required: true,
-    trim: true
+    required: true
   },
 
-  paidAt: {
-    type: Date,
-    default: Date.now
+  rentExpected: {
+    type: Number,
+    required: true
+  },
+
+  amountPaid: {
+    type: Number,
+    required: true
+  },
+
+  balance: {
+    type: Number,
+    required: true
+  },
+
+  status: {
+    type: String,
+    enum: ["paid", "partial", "unpaid"],
+    default: "partial"
+  },
+
+  mpesaCode: {
+    type: String,
+    default: null
   }
-});
+
+}, { timestamps: true });
 
 module.exports = mongoose.model("Payment", paymentSchema);

@@ -29,7 +29,7 @@ const loadRoute = (path, route) => {
 };
 
 // =====================
-// ROUTES
+// CORE ROUTES
 // =====================
 loadRoute('/api/auth', './routes/authRoutes');
 loadRoute('/api/tenants', './routes/tenantRoutes');
@@ -37,7 +37,14 @@ loadRoute('/api/houses', './routes/houseRoutes');
 loadRoute('/api/payments', './routes/paymentRoutes');
 loadRoute('/api/dashboard', './routes/dashboardRoutes');
 
-// OPTIONAL (ONLY IF EXISTS)
+// =====================
+// 🏢 APARTMENTS SYSTEM (NEW)
+// =====================
+loadRoute('/api/apartments', './routes/apartmentRoutes');
+
+// =====================
+// OPTIONAL ROUTES
+// =====================
 loadRoute('/api/rent', './routes/rentRoutes');
 
 // =====================
@@ -46,12 +53,13 @@ loadRoute('/api/rent', './routes/rentRoutes');
 app.get('/', (req, res) => {
   res.json({
     status: "Rental System API Running",
+    version: "2.0 - Apartment System Enabled",
     time: new Date().toISOString()
   });
 });
 
 // =====================
-// ERROR HANDLER (IMPORTANT)
+// ERROR HANDLER
 // =====================
 app.use((err, req, res, next) => {
   console.error("Server Error:", err.message);
@@ -64,5 +72,5 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });

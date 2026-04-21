@@ -56,7 +56,7 @@ router.get('/', auth, async (req, res) => {
 
 
 // =====================
-// ASSIGN HOUSE TO TENANT (STABLE)
+// ASSIGN HOUSE TO TENANT (FIXED & SAFE)
 // =====================
 router.put('/:id/assign', auth, async (req, res) => {
   try {
@@ -67,49 +67,55 @@ router.put('/:id/assign', auth, async (req, res) => {
     }
 
     const tenant = await Tenant.findById(req.params.id);
-    const house = await House.findById(houseId);
+    const newHouse = await House.findById(houseId);
 
-    if (!tenant || !house) {
+    if (!tenant || !newHouse) {
       return res.status(404).json({ message: "Tenant or House not found" });
     }
 
-    // block double booking
-    if (house.status === "occupied" && String(house.tenant) !== String(tenant._id)) {
+    // ❌ block if house is taken by another tenant
+    if (
+      newHouse.status === "occupied" &&
+      String(newHouse.tenant) !== String(tenant._id)
+    ) {
       return res.status(400).json({ message: "House already occupied" });
     }
 
-    // free old house
+    // =====================
+    // FREE OLD HOUSE (VERY IMPORTANT FIX)
+    // =====================
     if (tenant.house) {
       const oldHouse = await House.findById(tenant.house);
 
-      if (oldHouse && String(oldHouse._id) !== String(house._id)) {
+      if (oldHouse && String(oldHouse._id) !== String(newHouse._id)) {
         oldHouse.status = "available";
         oldHouse.tenant = null;
         await oldHouse.save();
       }
     }
 
-    // extra cleanup safety
-    const previousHouse = await House.findOne({ tenant: tenant._id });
+    // =====================
+    // CLEAN ANY WRONG LINKS (extra safety)
+    // =====================
+    await House.updateMany(
+      { tenant: tenant._id },
+      { $set: { status: "available", tenant: null } }
+    );
 
-    if (previousHouse && String(previousHouse._id) !== String(house._id)) {
-      previousHouse.status = "available";
-      previousHouse.tenant = null;
-      await previousHouse.save();
-    }
-
-    // assign new
-    tenant.house = house._id;
+    // =====================
+    // ASSIGN NEW HOUSE
+    // =====================
+    tenant.house = newHouse._id;
     await tenant.save();
 
-    house.status = "occupied";
-    house.tenant = tenant._id;
-    await house.save();
+    newHouse.status = "occupied";
+    newHouse.tenant = tenant._id;
+    await newHouse.save();
 
     return res.json({
       message: "Tenant assigned successfully",
       tenantId: tenant._id,
-      houseId: house._id
+      houseId: newHouse._id
     });
 
   } catch (err) {
@@ -122,7 +128,7 @@ router.put('/:id/assign', auth, async (req, res) => {
 
 
 // =====================
-// DELETE TENANT (MOVE OUT SAFE)
+// DELETE TENANT (SAFE MOVE-OUT)
 // =====================
 router.delete('/:id', auth, async (req, res) => {
   try {
@@ -132,7 +138,7 @@ router.delete('/:id', auth, async (req, res) => {
       return res.status(404).json({ message: "Tenant not found" });
     }
 
-    // free house first
+    // free assigned house
     if (tenant.house) {
       const house = await House.findById(tenant.house);
 
@@ -143,9 +149,17 @@ router.delete('/:id', auth, async (req, res) => {
       }
     }
 
+    // safety cleanup
+    await House.updateMany(
+      { tenant: tenant._id },
+      { $set: { status: "available", tenant: null } }
+    );
+
     await tenant.deleteOne();
 
-    return res.json({ message: "Tenant deleted successfully" });
+    return res.json({
+      message: "Tenant removed successfully"
+    });
 
   } catch (err) {
     return res.status(500).json({

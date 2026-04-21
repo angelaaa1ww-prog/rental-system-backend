@@ -10,22 +10,24 @@ const auth = require('../middleware/authMiddleware');
 // =====================
 router.post('/', auth, async (req, res) => {
   try {
-    const { houseNumber, location, rent } = req.body;
+    const { houseNumber, location, rent, apartment, bedrooms } = req.body;
 
-    if (!houseNumber || !location || !rent) {
+    if (!houseNumber || !location || !rent || !apartment || !bedrooms) {
       return res.status(400).json({ message: "All fields required" });
     }
 
-    const exists = await House.findOne({ houseNumber });
+    const exists = await House.findOne({ houseNumber, apartment });
 
     if (exists) {
-      return res.status(400).json({ message: "House already exists" });
+      return res.status(400).json({ message: "House already exists in this apartment" });
     }
 
     const house = await House.create({
       houseNumber,
       location,
       rent,
+      apartment,
+      bedrooms,
       status: "available",
       tenant: null
     });
@@ -42,16 +44,15 @@ router.post('/', auth, async (req, res) => {
 
 
 // =====================
-// GET ALL HOUSES (SAFE)
+// GET ALL HOUSES
 // =====================
 router.get('/', auth, async (req, res) => {
   try {
     const houses = await House.find()
       .populate('tenant')
-      .sort({ createdAt: -1 });
+      .sort({ apartment: 1, houseNumber: 1 });
 
-    return res.status(200).json(houses || []);
-
+    return res.json(houses || []);
   } catch (err) {
     return res.status(500).json({
       message: "Failed to load houses",
@@ -68,8 +69,7 @@ router.get('/available', auth, async (req, res) => {
   try {
     const houses = await House.find({ status: "available" });
 
-    return res.status(200).json(houses || []);
-
+    return res.json(houses || []);
   } catch (err) {
     return res.status(500).json({
       message: "Failed to load available houses",
@@ -90,17 +90,17 @@ router.put('/:id', auth, async (req, res) => {
       return res.status(404).json({ message: "House not found" });
     }
 
-    const allowed = ["houseNumber", "location", "rent"];
+    const fields = ["houseNumber", "location", "rent", "apartment", "bedrooms"];
 
-    allowed.forEach(field => {
-      if (req.body[field] !== undefined) {
-        house[field] = req.body[field];
+    fields.forEach(f => {
+      if (req.body[f] !== undefined) {
+        house[f] = req.body[f];
       }
     });
 
     await house.save();
 
-    return res.status(200).json(house);
+    return res.json(house);
 
   } catch (err) {
     return res.status(500).json({
@@ -112,7 +112,7 @@ router.put('/:id', auth, async (req, res) => {
 
 
 // =====================
-// DELETE HOUSE (SAFE)
+// DELETE HOUSE
 // =====================
 router.delete('/:id', auth, async (req, res) => {
   try {
@@ -122,18 +122,13 @@ router.delete('/:id', auth, async (req, res) => {
       return res.status(404).json({ message: "House not found" });
     }
 
-    // safety rule: don't delete occupied house
     if (house.status === "occupied") {
-      return res.status(400).json({
-        message: "Cannot delete occupied house"
-      });
+      return res.status(400).json({ message: "Cannot delete occupied house" });
     }
 
     await house.deleteOne();
 
-    return res.status(200).json({
-      message: "House deleted successfully"
-    });
+    return res.json({ message: "House deleted successfully" });
 
   } catch (err) {
     return res.status(500).json({

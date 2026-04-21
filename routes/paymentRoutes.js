@@ -8,10 +8,19 @@ const auth = require('../middleware/authMiddleware');
 
 
 // =====================
-// CREATE PAYMENT (STABLE)
+// GENERATE MPESA-LIKE CODE (SIMULATION)
+// =====================
+const generateCode = () => {
+  return "MPESA" + Math.random().toString(36).substring(2, 10).toUpperCase();
+};
+
+
+// =====================
+// CREATE PAYMENT (MPESA READY CORE)
 // =====================
 router.post('/', auth, async (req, res) => {
   try {
+
     const { tenant, house, amount, month } = req.body;
 
     if (!tenant || !house || !amount || !month) {
@@ -35,49 +44,68 @@ router.post('/', auth, async (req, res) => {
       });
     }
 
-    // prevent duplicate monthly payment
-    const existingPayment = await Payment.findOne({
-      tenant,
-      house,
-      month
-    });
+    // =====================
+    // EXPECTED RENT
+    // =====================
+    const expectedRent = houseExists.rent || 0;
 
-    if (existingPayment) {
+    // =====================
+    // TOTAL PAID THIS MONTH
+    // =====================
+    const payments = await Payment.find({ tenant, house, month });
+
+    const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+    const newTotal = totalPaid + Number(amount);
+
+    // =====================
+    // OVERPAY GUARD
+    // =====================
+    if (newTotal > expectedRent) {
       return res.status(400).json({
-        message: "Payment for this month already exists"
+        message: "Overpayment detected",
+        expected: expectedRent,
+        alreadyPaid: totalPaid,
+        attempted: amount
       });
     }
 
-    // create payment
+    // =====================
+    // CREATE PAYMENT
+    // =====================
     const payment = await Payment.create({
       tenant,
       house,
       amount,
-      month
+      month,
+      mpesaCode: generateCode(),
+      status: "confirmed"
     });
 
     // =====================
-    // SAFE HOUSE SYNC
+    // UPDATE HOUSE STATUS
     // =====================
+    const totalAfter = newTotal;
 
-    if (!houseExists.tenant || String(houseExists.tenant) !== String(tenant)) {
-      houseExists.tenant = tenant;
-    }
-
-    if (houseExists.status !== "occupied") {
+    if (totalAfter >= expectedRent) {
       houseExists.status = "occupied";
     }
 
+    houseExists.tenant = tenant;
     await houseExists.save();
 
+    // =====================
+    // RESPONSE
+    // =====================
     return res.json({
-      message: "Payment recorded successfully",
-      payment
+      message: "Payment successful",
+      payment,
+      balance: expectedRent - totalAfter
     });
 
   } catch (err) {
     return res.status(500).json({
-      message: "Payment creation failed",
+      message: "Payment failed",
       error: err.message
     });
   }
@@ -89,12 +117,14 @@ router.post('/', auth, async (req, res) => {
 // =====================
 router.get('/', auth, async (req, res) => {
   try {
+
     const payments = await Payment.find()
       .populate('tenant')
       .populate('house')
       .sort({ createdAt: -1 });
 
     return res.json(payments || []);
+
   } catch (err) {
     return res.status(500).json({
       message: "Failed to load payments",
@@ -109,11 +139,13 @@ router.get('/', auth, async (req, res) => {
 // =====================
 router.get('/tenant/:id', auth, async (req, res) => {
   try {
+
     const payments = await Payment.find({ tenant: req.params.id })
       .populate('house')
       .sort({ createdAt: -1 });
 
     return res.json(payments || []);
+
   } catch (err) {
     return res.status(500).json({
       message: "Failed to load tenant payments",

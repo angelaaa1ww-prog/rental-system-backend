@@ -1,38 +1,51 @@
 const mongoose = require('mongoose');
 
-const houseSchema = new mongoose.Schema({
-  houseNumber: {
-    type: String,
-    required: true,
-    trim: true
-  },
+const houseSchema = new mongoose.Schema(
+  {
+    houseNumber: {
+      type: String,
+      required: true,
+      trim: true
+    },
 
-  location: {
-    type: String,
-    required: true,
-    trim: true
-  },
+    location: {
+      type: String,
+      required: true,
+      trim: true
+    },
 
-  rent: {
-    type: Number,
-    required: true
-  },
+    apartment: {
+      type: String,
+      enum: ["A", "B", "C", "D", "E"],
+      required: true
+    },
 
-  // ✅ STRICT + CLEAN STATUS CONTROL
-  status: {
-    type: String,
-    enum: ["available", "occupied"],
-    default: "available",
-    lowercase: true,
-    trim: true
-  },
+    bedrooms: {
+      type: Number,
+      enum: [1, 2, 3, 4],
+      required: true
+    },
 
-  tenant: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Tenant",
-    default: null
+    rent: {
+      type: Number,
+      required: true
+    },
+
+    status: {
+      type: String,
+      enum: ["available", "occupied"],
+      default: "available"
+    },
+
+    tenant: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Tenant",
+      default: null
+    }
+  },
+  {
+    timestamps: true
   }
-
-}, { timestamps: true });
+);
 
 module.exports = mongoose.model('House', houseSchema);

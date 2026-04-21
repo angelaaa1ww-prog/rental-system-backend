@@ -8,75 +8,92 @@ const auth = require('../middleware/authMiddleware');
 
 
 // =====================
-// DASHBOARD STATS (STABLE VERSION)
+// MAIN DASHBOARD (UPGRADED)
 // =====================
 router.get('/', auth, async (req, res) => {
   try {
-    const [tenants, houses, payments] = await Promise.all([
-      Tenant.find(),
-      House.find(),
-      Payment.find()
-    ]);
+
+    const tenants = await Tenant.find();
+    const houses = await House.find();
+    const payments = await Payment.find();
 
     // =====================
-    // COUNTS
+    // BASIC COUNTS
     // =====================
     const totalTenants = tenants.length;
     const totalHouses = houses.length;
 
-    const occupiedHouses = houses.filter(h => h.status === "occupied").length;
-    const availableHouses = houses.filter(h => h.status === "available").length;
+    // =====================
+    // REVENUE
+    // =====================
+    const totalRevenue = payments.reduce((sum, p) => sum + (p.amountPaid || p.amount || 0), 0);
 
     // =====================
-    // CLEAN PAYMENT SUM
+    // APARTMENT BREAKDOWN (NEW CORE FEATURE)
     // =====================
-    const totalRevenue = payments.reduce((sum, p) => {
-      if (!p.amount || p.amount < 0) return sum;
-      return sum + p.amount;
-    }, 0);
+    const apartments = ["A", "B", "C", "D", "E"];
 
-    // =====================
-    // EXPECTED REVENUE (BASED ON VALID OCCUPIED LINKS)
-    // =====================
-    let expectedRevenue = 0;
+    const apartmentStats = apartments.map(ap => {
 
-    houses.forEach(h => {
-      if (
-        h.status === "occupied" &&
-        h.rent &&
-        h.rent > 0 &&
-        h.tenant
-      ) {
-        expectedRevenue += h.rent;
-      }
+      const apHouses = houses.filter(h => h.apartment === ap);
+      const apTenants = tenants.filter(t =>
+        apHouses.some(h => String(h.tenant) === String(t._id))
+      );
+
+      const apPayments = payments.filter(p =>
+        apHouses.some(h => String(h._id) === String(p.house))
+      );
+
+      const revenue = apPayments.reduce((sum, p) => sum + (p.amountPaid || p.amount || 0), 0);
+
+      const occupied = apHouses.filter(h => h.status === "occupied").length;
+      const available = apHouses.filter(h => h.status === "available").length;
+
+      return {
+        apartment: ap,
+        totalHouses: apHouses.length,
+        occupied,
+        available,
+        totalTenants: apTenants.length,
+        revenue
+      };
     });
 
     // =====================
-    // ARREARS (SAFE FLOOR AT 0)
+    // ARREARS (who is behind)
     // =====================
-    const arrears = Math.max(0, expectedRevenue - totalRevenue);
+    const arrears = houses.map(h => {
+      const tenantPayments = payments.filter(p =>
+        String(p.house) === String(h._id)
+      );
+
+      const paid = tenantPayments.reduce((sum, p) => sum + (p.amountPaid || 0), 0);
+      const expected = h.rent || 0;
+
+      return {
+        house: h.houseNumber,
+        apartment: h.apartment,
+        tenant: h.tenant,
+        expected,
+        paid,
+        balance: expected - paid
+      };
+    }).filter(a => a.balance > 0);
 
     // =====================
-    // PAYMENT RATE (SAFE)
+    // RESPONSE
     // =====================
-    const paymentRate =
-      expectedRevenue > 0
-        ? (totalRevenue / expectedRevenue) * 100
-        : 0;
-
     return res.json({
       totalTenants,
       totalHouses,
-      occupiedHouses,
-      availableHouses,
       totalRevenue,
-      arrears,
-      paymentRate: Math.round(paymentRate)
+      apartments: apartmentStats,
+      arrears
     });
 
   } catch (err) {
     return res.status(500).json({
-      message: "Dashboard error",
+      message: "Dashboard failed",
       error: err.message
     });
   }
