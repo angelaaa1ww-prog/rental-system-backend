@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const Tenant = require('../models/Tenant');
+const House = require('../models/House'); // ✅ added
 const auth = require('../middleware/authMiddleware');
 
 // =====================
@@ -39,12 +40,24 @@ router.post('/', auth, async (req, res) => {
 });
 
 // =====================
-// ASSIGN HOUSE TO TENANT
+// ASSIGN HOUSE TO TENANT (SMART)
 // =====================
 router.put('/:tenantId/assign', auth, async (req, res) => {
   try {
     const { houseId } = req.body;
 
+    // 1. Check if house exists
+    const house = await House.findById(houseId);
+    if (!house) {
+      return res.status(404).json({ message: "House not found" });
+    }
+
+    // 2. Prevent double booking
+    if (house.status === "occupied") {
+      return res.status(400).json({ message: "House already occupied" });
+    }
+
+    // 3. Assign tenant
     const tenant = await Tenant.findByIdAndUpdate(
       req.params.tenantId,
       { house: houseId },
@@ -55,7 +68,15 @@ router.put('/:tenantId/assign', auth, async (req, res) => {
       return res.status(404).json({ message: "Tenant not found" });
     }
 
-    res.json(tenant);
+    // 4. Update house status
+    house.status = "occupied";
+    await house.save();
+
+    res.json({
+      message: "Assigned successfully",
+      tenant
+    });
+
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
