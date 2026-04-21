@@ -5,9 +5,8 @@ const RentRecord = require('../models/RentRecord');
 const Tenant = require('../models/Tenant');
 const auth = require('../middleware/authMiddleware');
 
-
 // =====================
-// GENERATE MONTHLY RENT (FIXED)
+// GENERATE MONTHLY RENT
 // =====================
 router.post('/generate/:month', auth, async (req, res) => {
   try {
@@ -15,34 +14,32 @@ router.post('/generate/:month', auth, async (req, res) => {
 
     const tenants = await Tenant.find().populate('house');
 
-    let count = 0;
+    let created = 0;
 
-    for (let t of tenants) {
+    for (const t of tenants) {
       if (!t.house) continue;
 
-      // 🔥 STRICT CHECK (tenant + month)
       const exists = await RentRecord.findOne({
         tenant: t._id,
         month
       });
 
-      if (exists) continue;
+      if (!exists) {
+        await RentRecord.create({
+          tenant: t._id,
+          house: t.house._id,
+          month,
+          expectedAmount: t.house.rent,
+          status: "unpaid"
+        });
 
-      const record = new RentRecord({
-        tenant: t._id,
-        house: t.house._id,
-        month,
-        expectedAmount: t.house.rent,
-        status: "unpaid"
-      });
-
-      await record.save();
-      count++;
+        created++;
+      }
     }
 
     res.json({
-      message: "Rent records generated",
-      count
+      message: "Rent generated successfully",
+      created
     });
 
   } catch (err) {
@@ -50,19 +47,16 @@ router.post('/generate/:month', auth, async (req, res) => {
   }
 });
 
-
 // =====================
-// GET RENT BY MONTH
+// GET RENT RECORDS
 // =====================
 router.get('/:month', auth, async (req, res) => {
   try {
-    const records = await RentRecord.find({ month: req.params.month })
+    const data = await RentRecord.find({ month: req.params.month })
       .populate('tenant')
-      .populate('house')
-      .sort({ createdAt: -1 });
+      .populate('house');
 
-    res.json(records);
-
+    res.json(data);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

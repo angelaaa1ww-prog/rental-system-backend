@@ -7,6 +7,35 @@ const auth = require('../middleware/authMiddleware');
 
 
 // =====================
+// CREATE TENANT
+// =====================
+router.post('/', auth, async (req, res) => {
+  try {
+    const { name, phone, idNumber } = req.body;
+
+    if (!name || !phone || !idNumber) {
+      return res.status(400).json({ message: "All fields required" });
+    }
+
+    const tenant = await Tenant.create({
+      name,
+      phone,
+      idNumber,
+      house: null
+    });
+
+    return res.status(201).json(tenant);
+
+  } catch (err) {
+    return res.status(500).json({
+      message: "Failed to create tenant",
+      error: err.message
+    });
+  }
+});
+
+
+// =====================
 // GET ALL TENANTS
 // =====================
 router.get('/', auth, async (req, res) => {
@@ -15,57 +44,21 @@ router.get('/', auth, async (req, res) => {
       .populate('house')
       .sort({ createdAt: -1 });
 
-    res.json(tenants);
+    return res.status(200).json(tenants || []);
+
   } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-
-// =====================
-// CREATE TENANT (VALIDATED)
-// =====================
-router.post('/', auth, async (req, res) => {
-  try {
-    const { name, phone, idNumber } = req.body;
-
-    // 🔥 VALIDATION
-    if (!name || !phone || !idNumber) {
-      return res.status(400).json({
-        message: "name, phone, idNumber are required"
-      });
-    }
-
-    // 🔥 PREVENT DUPLICATE ID
-    const exists = await Tenant.findOne({ idNumber });
-    if (exists) {
-      return res.status(400).json({
-        message: "Tenant with this ID already exists"
-      });
-    }
-
-    const tenant = new Tenant({
-      name,
-      phone,
-      idNumber,
-      house: null,
-      status: "active"
+    return res.status(500).json({
+      message: "Failed to load tenants",
+      error: err.message
     });
-
-    await tenant.save();
-
-    res.json(tenant);
-
-  } catch (err) {
-    res.status(500).json({ message: err.message });
   }
 });
 
 
 // =====================
-// ASSIGN HOUSE
+// ASSIGN HOUSE TO TENANT (STABLE)
 // =====================
-router.put('/:tenantId/assign', auth, async (req, res) => {
+router.put('/:id/assign', auth, async (req, res) => {
   try {
     const { houseId } = req.body;
 
@@ -73,39 +66,39 @@ router.put('/:tenantId/assign', auth, async (req, res) => {
       return res.status(400).json({ message: "houseId is required" });
     }
 
-    const tenant = await Tenant.findById(req.params.tenantId);
-    if (!tenant) {
-      return res.status(404).json({ message: "Tenant not found" });
-    }
-
+    const tenant = await Tenant.findById(req.params.id);
     const house = await House.findById(houseId);
-    if (!house) {
-      return res.status(404).json({ message: "House not found" });
+
+    if (!tenant || !house) {
+      return res.status(404).json({ message: "Tenant or House not found" });
     }
 
-    // SAME HOUSE CHECK
-    if (tenant.house && tenant.house.toString() === houseId.toString()) {
-      return res.status(400).json({
-        message: "Tenant already assigned to this house"
-      });
+    // block double booking
+    if (house.status === "occupied" && String(house.tenant) !== String(tenant._id)) {
+      return res.status(400).json({ message: "House already occupied" });
     }
 
-    // FREE OLD HOUSE
+    // free old house
     if (tenant.house) {
-      await House.findByIdAndUpdate(tenant.house, {
-        status: "available",
-        tenant: null
-      });
+      const oldHouse = await House.findById(tenant.house);
+
+      if (oldHouse && String(oldHouse._id) !== String(house._id)) {
+        oldHouse.status = "available";
+        oldHouse.tenant = null;
+        await oldHouse.save();
+      }
     }
 
-    // CHECK OCCUPIED
-    if (house.status === "occupied") {
-      return res.status(400).json({
-        message: "House already occupied"
-      });
+    // extra cleanup safety
+    const previousHouse = await House.findOne({ tenant: tenant._id });
+
+    if (previousHouse && String(previousHouse._id) !== String(house._id)) {
+      previousHouse.status = "available";
+      previousHouse.tenant = null;
+      await previousHouse.save();
     }
 
-    // ASSIGN
+    // assign new
     tenant.house = house._id;
     await tenant.save();
 
@@ -113,45 +106,52 @@ router.put('/:tenantId/assign', auth, async (req, res) => {
     house.tenant = tenant._id;
     await house.save();
 
-    res.json({
-      message: "House assigned successfully",
-      tenant
+    return res.json({
+      message: "Tenant assigned successfully",
+      tenantId: tenant._id,
+      houseId: house._id
     });
 
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    return res.status(500).json({
+      message: "Assignment failed",
+      error: err.message
+    });
   }
 });
 
 
 // =====================
-// UNASSIGN HOUSE
+// DELETE TENANT (MOVE OUT SAFE)
 // =====================
-router.put('/:tenantId/unassign', auth, async (req, res) => {
+router.delete('/:id', auth, async (req, res) => {
   try {
-    const tenant = await Tenant.findById(req.params.tenantId);
+    const tenant = await Tenant.findById(req.params.id);
 
     if (!tenant) {
       return res.status(404).json({ message: "Tenant not found" });
     }
 
+    // free house first
     if (tenant.house) {
-      await House.findByIdAndUpdate(tenant.house, {
-        status: "available",
-        tenant: null
-      });
+      const house = await House.findById(tenant.house);
+
+      if (house) {
+        house.status = "available";
+        house.tenant = null;
+        await house.save();
+      }
     }
 
-    tenant.house = null;
-    await tenant.save();
+    await tenant.deleteOne();
 
-    res.json({
-      message: "Tenant unassigned successfully",
-      tenant
-    });
+    return res.json({ message: "Tenant deleted successfully" });
 
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    return res.status(500).json({
+      message: "Failed to delete tenant",
+      error: err.message
+    });
   }
 });
 

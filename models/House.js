@@ -18,11 +18,13 @@ const houseSchema = new mongoose.Schema({
     required: true
   },
 
-  // 🔥 FIX: enforce strict allowed values
+  // ✅ STRICT + CLEAN STATUS CONTROL
   status: {
     type: String,
     enum: ["available", "occupied"],
-    default: "available"
+    default: "available",
+    lowercase: true,
+    trim: true
   },
 
   tenant: {

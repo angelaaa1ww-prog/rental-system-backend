@@ -6,41 +6,23 @@ const auth = require('../middleware/authMiddleware');
 
 
 // =====================
-// GET ALL HOUSES
-// =====================
-router.get('/', auth, async (req, res) => {
-  try {
-    const houses = await House.find().sort({ createdAt: -1 });
-    res.json(houses);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-
-// =====================
-// CREATE HOUSE (VALIDATED)
+// CREATE HOUSE
 // =====================
 router.post('/', auth, async (req, res) => {
   try {
     const { houseNumber, location, rent } = req.body;
 
-    // 🔥 VALIDATION
     if (!houseNumber || !location || !rent) {
-      return res.status(400).json({
-        message: "houseNumber, location, rent are required"
-      });
+      return res.status(400).json({ message: "All fields required" });
     }
 
-    // 🔥 PREVENT DUPLICATES
     const exists = await House.findOne({ houseNumber });
+
     if (exists) {
-      return res.status(400).json({
-        message: "House number already exists"
-      });
+      return res.status(400).json({ message: "House already exists" });
     }
 
-    const house = new House({
+    const house = await House.create({
       houseNumber,
       location,
       rent,
@@ -48,11 +30,51 @@ router.post('/', auth, async (req, res) => {
       tenant: null
     });
 
-    const saved = await house.save();
-    res.json(saved);
+    return res.status(201).json(house);
 
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    return res.status(500).json({
+      message: "Failed to create house",
+      error: err.message
+    });
+  }
+});
+
+
+// =====================
+// GET ALL HOUSES (SAFE)
+// =====================
+router.get('/', auth, async (req, res) => {
+  try {
+    const houses = await House.find()
+      .populate('tenant')
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json(houses || []);
+
+  } catch (err) {
+    return res.status(500).json({
+      message: "Failed to load houses",
+      error: err.message
+    });
+  }
+});
+
+
+// =====================
+// GET AVAILABLE HOUSES
+// =====================
+router.get('/available', auth, async (req, res) => {
+  try {
+    const houses = await House.find({ status: "available" });
+
+    return res.status(200).json(houses || []);
+
+  } catch (err) {
+    return res.status(500).json({
+      message: "Failed to load available houses",
+      error: err.message
+    });
   }
 });
 
@@ -62,20 +84,62 @@ router.post('/', auth, async (req, res) => {
 // =====================
 router.put('/:id', auth, async (req, res) => {
   try {
-    const updated = await House.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true }
-    );
+    const house = await House.findById(req.params.id);
 
-    if (!updated) {
+    if (!house) {
       return res.status(404).json({ message: "House not found" });
     }
 
-    res.json(updated);
+    const allowed = ["houseNumber", "location", "rent"];
+
+    allowed.forEach(field => {
+      if (req.body[field] !== undefined) {
+        house[field] = req.body[field];
+      }
+    });
+
+    await house.save();
+
+    return res.status(200).json(house);
 
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    return res.status(500).json({
+      message: "Failed to update house",
+      error: err.message
+    });
+  }
+});
+
+
+// =====================
+// DELETE HOUSE (SAFE)
+// =====================
+router.delete('/:id', auth, async (req, res) => {
+  try {
+    const house = await House.findById(req.params.id);
+
+    if (!house) {
+      return res.status(404).json({ message: "House not found" });
+    }
+
+    // safety rule: don't delete occupied house
+    if (house.status === "occupied") {
+      return res.status(400).json({
+        message: "Cannot delete occupied house"
+      });
+    }
+
+    await house.deleteOne();
+
+    return res.status(200).json({
+      message: "House deleted successfully"
+    });
+
+  } catch (err) {
+    return res.status(500).json({
+      message: "Failed to delete house",
+      error: err.message
+    });
   }
 });
 

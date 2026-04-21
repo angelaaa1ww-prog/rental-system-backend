@@ -15,18 +15,27 @@ const rentRecordSchema = new mongoose.Schema({
 
   month: {
     type: String,
-    required: true
+    required: true,
+    trim: true
   },
 
   expectedAmount: {
     type: Number,
-    required: true
+    required: true,
+    default: 0
   },
 
   status: {
     type: String,
-    default: "unpaid" // unpaid | paid
+    enum: ["unpaid", "paid"],
+    default: "unpaid"
+  },
+
+  paidAt: {
+    type: Date,
+    default: null
   }
+
 }, { timestamps: true });
 
 module.exports = mongoose.model("RentRecord", rentRecordSchema);
