@@ -10,7 +10,7 @@ const auth = require('../middleware/authMiddleware');
 // =====================
 router.get('/', auth, async (req, res) => {
   try {
-    const tenants = await Tenant.find();
+    const tenants = await Tenant.find().populate('house');
     res.json(tenants);
   } catch (err) {
     res.status(500).json({ message: err.message });

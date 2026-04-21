@@ -1,16 +1,25 @@
 const mongoose = require('mongoose');
 
 const houseSchema = new mongoose.Schema({
-  houseNumber: String,
-  location: String,
-  rent: Number,
+  houseNumber: {
+    type: String,
+    required: true
+  },
+  location: {
+    type: String,
+    required: true
+  },
+  rent: {
+    type: Number,
+    required: true
+  },
   status: {
     type: String,
-    default: 'vacant'
+    default: "available"
   },
   tenant: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Tenant',
+    ref: "Tenant",
     default: null
   }
 }, { timestamps: true });
