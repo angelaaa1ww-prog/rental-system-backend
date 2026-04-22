@@ -6,7 +6,7 @@ const Tenant = require('../models/Tenant');
 const auth = require('../middleware/authMiddleware');
 
 const sendSMS = require('../utils/sms');
-const { stkPush } = require('../utils/mpesa'); // ✅ NEW M-PESA INTEGRATION
+const { stkPush } = require('../utils/mpesa');
 
 
 // =====================
@@ -29,16 +29,19 @@ router.post('/', auth, async (req, res) => {
     // =========================
     // 1. INITIATE STK PUSH
     // =========================
-    const stkResponse = await stkPush(tenant.phone, amount);
+    let stkResponse;
 
-    if (!stkResponse) {
+    try {
+      stkResponse = await stkPush(tenant.phone, amount);
+    } catch (err) {
       return res.status(500).json({
-        message: "M-Pesa STK push failed"
+        message: "M-Pesa STK push failed",
+        error: err.message
       });
     }
 
     // =========================
-    // 2. SAVE PAYMENT RECORD (PENDING CONFIRMATION)
+    // 2. SAVE PAYMENT (PENDING)
     // =========================
     const payment = await Payment.create({
       tenant: tenantId,
@@ -53,7 +56,8 @@ router.post('/', auth, async (req, res) => {
     if (tenant.phone) {
       await sendSMS(
         tenant.phone,
-        `M-Pesa request sent: KES ${amount}. Please enter your PIN to complete payment.`
+        `M-Pesa request sent: KES ${amount}. Complete payment on your phone.`,
+        tenant._id
       );
     }
 

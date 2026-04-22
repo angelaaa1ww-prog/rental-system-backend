@@ -19,7 +19,7 @@ connectDB();
 // =====================
 // CRON JOB (AUTO REMINDERS)
 // =====================
-require("./cron/rentCron"); // ✅ single source of truth for reminders
+require("./cron/rentCron");
 
 // =====================
 // ROUTE LOADER
@@ -43,11 +43,42 @@ loadRoute('/api/payments', './routes/paymentRoutes');
 loadRoute('/api/dashboard', './routes/dashboardRoutes');
 loadRoute('/api/reminders', './routes/reminderRoutes');
 loadRoute('/api/mpesa', './routes/mpesaCallbackRoutes');
+loadRoute('/api/sms', './routes/smsRoutes');
+loadRoute('/api/reports', './routes/reportRoutes');
+loadRoute('/api/sms', './routes/smsRoutes');
 
 // =====================
 // OPTIONAL ROUTES
 // =====================
 loadRoute('/api/rent', './routes/rentRoutes');
+
+// =====================
+// SMS SETUP
+// =====================
+const sendSMS = require('./utils/sms');
+
+// =====================
+// TEST SMS ROUTE
+// =====================
+app.get('/test-sms', async (req, res) => {
+  try {
+    const result = await sendSMS(
+      "+254741642131", // ⚠️ replace with YOUR real number
+      "Test SMS from Rental System - Africa's Talking activation check"
+    );
+
+    res.json({
+      message: "SMS request sent",
+      result
+    });
+
+  } catch (err) {
+    res.status(500).json({
+      message: "SMS failed",
+      error: err.message
+    });
+  }
+});
 
 // =====================
 // HEALTH CHECK
@@ -71,7 +102,7 @@ app.use((err, req, res, next) => {
 // =====================
 // START SERVER
 // =====================
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);

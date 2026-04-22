@@ -3,40 +3,39 @@ const router = express.Router();
 
 const Payment = require('../models/Payment');
 const Tenant = require('../models/Tenant');
+const House = require('../models/House');
 const auth = require('../middleware/authMiddleware');
 
 
 // =====================
-// UNPAID / OVERDUE REPORT
+// MONTHLY REPORT
 // =====================
-router.get('/unpaid', auth, async (req, res) => {
+router.get('/monthly', auth, async (req, res) => {
   try {
-    const tenants = await Tenant.find().populate('house');
+    const { month, year } = req.query;
 
-    const payments = await Payment.find();
+    const start = new Date(year, month - 1, 1);
+    const end = new Date(year, month, 0, 23, 59, 59);
 
-    const report = tenants.map(tenant => {
-      const tenantPayments = payments.filter(
-        p => p.tenant.toString() === tenant._id.toString()
-      );
-
-      const lastPayment = tenantPayments.sort(
-        (a, b) => new Date(b.paidAt) - new Date(a.paidAt)
-      )[0];
-
-      return {
-        tenant: tenant.name,
-        phone: tenant.phone,
-        house: tenant.house?.houseNumber || "NOT ASSIGNED",
-        lastPaidMonth: lastPayment?.month || "NEVER PAID",
-        lastPaidAmount: lastPayment?.amount || 0
-      };
+    const payments = await Payment.find({
+      status: "confirmed",
+      createdAt: { $gte: start, $lte: end }
     });
 
-    res.json(report);
+    const totalIncome = payments.reduce((sum, p) => sum + p.amount, 0);
+
+    res.json({
+      month,
+      year,
+      totalIncome,
+      transactions: payments.length
+    });
 
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({
+      message: "Report error",
+      error: err.message
+    });
   }
 });
 

@@ -1,28 +1,41 @@
 const AfricasTalking = require('africastalking');
+const SmsLog = require('../models/SmsLog');
 
-const africasTalking = AfricasTalking({
-  apiKey: process.env.AT_API_KEY,
-  username: process.env.AT_USERNAME
+const africastalking = AfricasTalking({
+  username: process.env.AT_USERNAME,
+  apiKey: process.env.AT_API_KEY
 });
 
-const sms = africasTalking.SMS;
+const sms = africastalking.SMS;
 
-/**
- * Send SMS function
- */
-const sendSMS = async (phone, message) => {
+module.exports = async (phone, message, tenantId = null) => {
   try {
     const result = await sms.send({
-      to: phone,
+      to: [phone],
       message
     });
 
-    console.log("SMS sent:", result);
+    const data = result.SMSMessageData.Recipients[0];
+
+    await SmsLog.create({
+      phone,
+      message,
+      status: data.status === "Success" ? "sent" : "failed",
+      cost: data.cost,
+      messageId: data.messageId,
+      tenant: tenantId
+    });
+
     return result;
+
   } catch (err) {
-    console.log("SMS ERROR:", err.message);
-    return null;
+    await SmsLog.create({
+      phone,
+      message,
+      status: "failed",
+      tenant: tenantId
+    });
+
+    throw err;
   }
 };
-
-module.exports = sendSMS;

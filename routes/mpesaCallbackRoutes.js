@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const Payment = require('../models/Payment');
+const Tenant = require('../models/Tenant');
 const sendSMS = require('../utils/sms');
 
 
@@ -10,59 +11,64 @@ const sendSMS = require('../utils/sms');
 // =====================
 router.post('/stk', async (req, res) => {
   try {
-    const callback = req.body;
+    const body = req.body;
 
-    console.log("📩 MPESA CALLBACK:", JSON.stringify(callback, null, 2));
+    console.log("M-PESA CALLBACK:", JSON.stringify(body, null, 2));
 
-    // Extract result
-    const result = callback.Body?.stkCallback;
+    const callback = body?.Body?.stkCallback;
 
-    if (!result) {
-      return res.status(200).json({ message: "No callback data" });
+    if (!callback) {
+      return res.status(400).json({ message: "Invalid callback" });
     }
 
-    const reference = result.CheckoutRequestID;
-    const resultCode = result.ResultCode;
+    const resultCode = callback.ResultCode;
+    const metadata = callback.CallbackMetadata?.Item || [];
 
-    // =====================
-    // PAYMENT SUCCESSFUL
-    // =====================
+    const getValue = (name) =>
+      metadata.find(item => item.Name === name)?.Value;
+
+    const amount = getValue("Amount");
+    const phone = getValue("PhoneNumber");
+    const receipt = getValue("MpesaReceiptNumber");
+
+    // =========================
+    // PAYMENT SUCCESS
+    // =========================
     if (resultCode === 0) {
-      const metadata = result.CallbackMetadata?.Item || [];
 
-      const amount = metadata.find(i => i.Name === "Amount")?.Value;
-      const receipt = metadata.find(i => i.Name === "MpesaReceiptNumber")?.Value;
-      const phone = metadata.find(i => i.Name === "PhoneNumber")?.Value;
+      const payment = await Payment.findOneAndUpdate(
+        { reference: receipt },
+        { status: "confirmed", mpesaReceipt: receipt },
+        { new: true }
+      ).populate("tenant");
 
-      const payment = await Payment.findOne({ reference });
-
-      if (payment) {
-        payment.status = "confirmed";
-        payment.mpesaReceipt = receipt;
-        await payment.save();
-
+      if (payment?.tenant?.phone) {
         await sendSMS(
-          phone,
-          `Payment successful. Receipt: ${receipt}. Amount: KES ${amount}. Thank you.`
+          payment.tenant.phone,
+          `Payment received successfully. Receipt: ${receipt}. Amount: KES ${amount}`
         );
       }
+
+      return res.json({ message: "Payment confirmed" });
     }
 
-    // =====================
+    // =========================
     // PAYMENT FAILED
-    // =====================
-    else {
-      await Payment.findOneAndUpdate(
-        { reference },
-        { status: "failed" }
-      );
-    }
+    // =========================
+    await Payment.updateMany(
+      { reference: receipt },
+      { status: "failed" }
+    );
 
-    return res.status(200).json({ message: "Callback processed" });
+    return res.json({ message: "Payment failed" });
 
   } catch (err) {
-    console.log("Callback error:", err.message);
-    return res.status(500).json({ message: "Callback error" });
+    console.error("Callback error:", err.message);
+
+    return res.status(500).json({
+      message: "Callback processing failed",
+      error: err.message
+    });
   }
 });
 

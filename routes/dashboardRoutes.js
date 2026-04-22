@@ -8,92 +8,91 @@ const auth = require('../middleware/authMiddleware');
 
 
 // =====================
-// MAIN DASHBOARD (UPGRADED)
+// DASHBOARD SUMMARY (OPTIMIZED)
 // =====================
 router.get('/', auth, async (req, res) => {
   try {
 
-    const tenants = await Tenant.find();
-    const houses = await House.find();
-    const payments = await Payment.find();
+    // =====================
+    // HOUSE STATS
+    // =====================
+    const totalHouses = await House.countDocuments();
+    const occupied = await House.countDocuments({ status: "occupied" });
+    const available = totalHouses - occupied;
+
+    const occupancyRate = totalHouses === 0
+      ? 0
+      : Math.round((occupied / totalHouses) * 100);
+
 
     // =====================
-    // BASIC COUNTS
+    // PAYMENTS (FETCH ONCE ONLY)
     // =====================
-    const totalTenants = tenants.length;
-    const totalHouses = houses.length;
+    const payments = await Payment.find({ status: "confirmed" });
 
-    // =====================
-    // REVENUE
-    // =====================
-    const totalRevenue = payments.reduce((sum, p) => sum + (p.amountPaid || p.amount || 0), 0);
+    const totalIncome = payments.reduce((sum, p) => sum + p.amount, 0);
+
 
     // =====================
-    // APARTMENT BREAKDOWN (NEW CORE FEATURE)
+    // TENANTS
     // =====================
-    const apartments = ["A", "B", "C", "D", "E"];
+    const tenants = await Tenant.find().populate('house');
 
-    const apartmentStats = apartments.map(ap => {
 
-      const apHouses = houses.filter(h => h.apartment === ap);
-      const apTenants = tenants.filter(t =>
-        apHouses.some(h => String(h.tenant) === String(t._id))
-      );
+    // =====================
+    // BUILD PAYMENT MAP (FASTER)
+    // =====================
+    const paymentMap = {};
 
-      const apPayments = payments.filter(p =>
-        apHouses.some(h => String(h._id) === String(p.house))
-      );
-
-      const revenue = apPayments.reduce((sum, p) => sum + (p.amountPaid || p.amount || 0), 0);
-
-      const occupied = apHouses.filter(h => h.status === "occupied").length;
-      const available = apHouses.filter(h => h.status === "available").length;
-
-      return {
-        apartment: ap,
-        totalHouses: apHouses.length,
-        occupied,
-        available,
-        totalTenants: apTenants.length,
-        revenue
-      };
+    payments.forEach(p => {
+      const id = String(p.tenant);
+      if (!paymentMap[id]) paymentMap[id] = 0;
+      paymentMap[id] += p.amount;
     });
 
-    // =====================
-    // ARREARS (who is behind)
-    // =====================
-    const arrears = houses.map(h => {
-      const tenantPayments = payments.filter(p =>
-        String(p.house) === String(h._id)
-      );
 
-      const paid = tenantPayments.reduce((sum, p) => sum + (p.amountPaid || 0), 0);
-      const expected = h.rent || 0;
+    // =====================
+    // OVERDUE CALCULATION
+    // =====================
+    const overdueTenants = [];
 
-      return {
-        house: h.houseNumber,
-        apartment: h.apartment,
-        tenant: h.tenant,
-        expected,
-        paid,
-        balance: expected - paid
-      };
-    }).filter(a => a.balance > 0);
+    tenants.forEach(t => {
+      if (!t.house) return;
+
+      const rent = t.house.rent || 0;
+      const paid = paymentMap[String(t._id)] || 0;
+
+      const balance = rent - paid;
+
+      if (balance > 0) {
+        overdueTenants.push({
+          name: t.name,
+          phone: t.phone,
+          house: t.house.houseNumber,
+          rent,
+          paid,
+          balance
+        });
+      }
+    });
+
 
     // =====================
     // RESPONSE
     // =====================
-    return res.json({
-      totalTenants,
+    res.json({
       totalHouses,
-      totalRevenue,
-      apartments: apartmentStats,
-      arrears
+      occupied,
+      available,
+      occupancyRate,
+      totalIncome,
+      overdueCount: overdueTenants.length,
+      overdueTenants
     });
 
   } catch (err) {
-    return res.status(500).json({
-      message: "Dashboard failed",
+    res.status(500).json({
+      message: "Dashboard error",
       error: err.message
     });
   }

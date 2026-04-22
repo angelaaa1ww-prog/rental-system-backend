@@ -5,8 +5,9 @@ const Tenant = require('../models/Tenant');
 const House = require('../models/House');
 const auth = require('../middleware/authMiddleware');
 
+
 // =====================
-// CREATE TENANT
+// CREATE TENANT (UPDATED WITH DUE DATE)
 // =====================
 router.post('/', auth, async (req, res) => {
   try {
@@ -20,7 +21,10 @@ router.post('/', auth, async (req, res) => {
       name,
       phone,
       idNumber,
-      house: null
+      house: null,
+
+      // 🔥 NEW: default rent cycle (30 days)
+      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
     });
 
     const populated = await Tenant.findById(tenant._id).populate('house');
@@ -34,6 +38,7 @@ router.post('/', auth, async (req, res) => {
     });
   }
 });
+
 
 // =====================
 // GET ALL TENANTS
@@ -54,8 +59,9 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
+
 // =====================
-// ASSIGN HOUSE (FIXED RESPONSE)
+// ASSIGN HOUSE
 // =====================
 router.put('/:id/assign', auth, async (req, res) => {
   try {
@@ -93,7 +99,7 @@ router.put('/:id/assign', auth, async (req, res) => {
       { $set: { status: "available", tenant: null } }
     );
 
-    // assign
+    // assign new house
     tenant.house = newHouse._id;
     await tenant.save();
 
@@ -101,7 +107,6 @@ router.put('/:id/assign', auth, async (req, res) => {
     newHouse.tenant = tenant._id;
     await newHouse.save();
 
-    // 🔥 RETURN UPDATED TENANT (IMPORTANT FIX)
     const updatedTenant = await Tenant.findById(tenant._id).populate('house');
 
     res.json({
@@ -116,6 +121,7 @@ router.put('/:id/assign', auth, async (req, res) => {
     });
   }
 });
+
 
 // =====================
 // DELETE TENANT
