@@ -7,7 +7,7 @@ const auth = require('../middleware/authMiddleware');
 
 
 // =====================
-// CREATE TENANT (UPDATED WITH DUE DATE)
+// CREATE TENANT
 // =====================
 router.post('/', auth, async (req, res) => {
   try {
@@ -22,8 +22,6 @@ router.post('/', auth, async (req, res) => {
       phone,
       idNumber,
       house: null,
-
-      // 🔥 NEW: default rent cycle (30 days)
       dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
     });
 
@@ -61,7 +59,7 @@ router.get('/', auth, async (req, res) => {
 
 
 // =====================
-// ASSIGN HOUSE
+// ASSIGN HOUSE (FIXED STATUS)
 // =====================
 router.put('/:id/assign', auth, async (req, res) => {
   try {
@@ -78,6 +76,7 @@ router.put('/:id/assign', auth, async (req, res) => {
       return res.status(404).json({ message: "Tenant or House not found" });
     }
 
+    // 🔥 FIX: use "occupied" only
     if (newHouse.status === "occupied" &&
         String(newHouse.tenant) !== String(tenant._id)) {
       return res.status(400).json({ message: "House already occupied" });
@@ -87,16 +86,16 @@ router.put('/:id/assign', auth, async (req, res) => {
     if (tenant.house) {
       const oldHouse = await House.findById(tenant.house);
       if (oldHouse && String(oldHouse._id) !== String(newHouse._id)) {
-        oldHouse.status = "available";
+        oldHouse.status = "vacant";   // ✅ FIXED
         oldHouse.tenant = null;
         await oldHouse.save();
       }
     }
 
-    // cleanup wrong links
+    // cleanup broken links
     await House.updateMany(
       { tenant: tenant._id },
-      { $set: { status: "available", tenant: null } }
+      { $set: { status: "vacant", tenant: null } } // ✅ FIXED
     );
 
     // assign new house
@@ -124,7 +123,7 @@ router.put('/:id/assign', auth, async (req, res) => {
 
 
 // =====================
-// DELETE TENANT
+// DELETE TENANT (FIXED STATUS)
 // =====================
 router.delete('/:id', auth, async (req, res) => {
   try {
@@ -137,7 +136,7 @@ router.delete('/:id', auth, async (req, res) => {
     if (tenant.house) {
       const house = await House.findById(tenant.house);
       if (house) {
-        house.status = "available";
+        house.status = "vacant";   // ✅ FIXED
         house.tenant = null;
         await house.save();
       }
@@ -145,7 +144,7 @@ router.delete('/:id', auth, async (req, res) => {
 
     await House.updateMany(
       { tenant: tenant._id },
-      { $set: { status: "available", tenant: null } }
+      { $set: { status: "vacant", tenant: null } } // ✅ FIXED
     );
 
     await tenant.deleteOne();

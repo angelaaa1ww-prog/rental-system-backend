@@ -14,20 +14,7 @@ const paymentSchema = new mongoose.Schema(
     },
 
     reference: {
-      type: String,
-      required: true,
-      unique: true
-    },
-
-    status: {
-      type: String,
-      enum: ["pending", "confirmed", "failed"],
-      default: "pending"
-    },
-
-    mpesaReceipt: {
-      type: String,
-      default: null
+      type: String
     }
   },
   { timestamps: true }

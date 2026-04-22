@@ -4,13 +4,26 @@ const router = express.Router();
 const House = require('../models/House');
 const auth = require('../middleware/authMiddleware');
 
-// CREATE HOUSE
+
+// =====================
+// CREATE HOUSE (FIXED)
+// =====================
 router.post('/', auth, async (req, res) => {
   try {
-    const { houseNumber, location, rent, apartment, bedrooms } = req.body;
+    let { houseNumber, location, rent, apartment, bedrooms } = req.body;
 
-    if (!houseNumber || !location || !rent || !apartment || !bedrooms) {
-      return res.status(400).json({ message: "All fields required" });
+    console.log("HOUSE REQUEST:", req.body);
+
+    // FORCE CLEAN TYPES
+    rent = Number(rent);
+    bedrooms = Number(bedrooms);
+
+    if (!houseNumber || !location || !apartment) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    if (isNaN(rent) || rent <= 0) {
+      return res.status(400).json({ message: "Invalid rent value" });
     }
 
     const exists = await House.findOne({ houseNumber, apartment });
@@ -25,27 +38,32 @@ router.post('/', auth, async (req, res) => {
       rent,
       apartment,
       bedrooms,
-      status: "available",
+      status: "vacant",   // FIXED (consistent with frontend)
       tenant: null
     });
 
-    res.status(201).json(house);
+    return res.status(201).json(house);
 
   } catch (err) {
-    res.status(500).json({
+    console.log("HOUSE CREATE ERROR:", err);
+
+    return res.status(500).json({
       message: "Failed to create house",
       error: err.message
     });
   }
 });
 
+
+// =====================
 // GET ALL HOUSES
+// =====================
 router.get('/', auth, async (req, res) => {
   try {
     const houses = await House.find().populate('tenant');
-    res.json(houses);
+    return res.json(houses);
   } catch (err) {
-    res.status(500).json({ message: "Failed to load houses" });
+    return res.status(500).json({ message: "Failed to load houses" });
   }
 });
 

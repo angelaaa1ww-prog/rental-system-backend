@@ -33,8 +33,8 @@ const houseSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["available", "occupied"],
-      default: "available"
+      enum: ["vacant", "occupied"],
+      default: "vacant"
     },
 
     tenant: {
@@ -44,6 +44,16 @@ const houseSchema = new mongoose.Schema(
     }
   },
   { timestamps: true }
+);
+
+/**
+ * FIXED:
+ * Ensures houseNumber is unique ONLY inside each apartment
+ * (A-001 can exist, B-001 can exist)
+ */
+houseSchema.index(
+  { houseNumber: 1, apartment: 1 },
+  { unique: true }
 );
 
 module.exports = mongoose.model("House", houseSchema);
