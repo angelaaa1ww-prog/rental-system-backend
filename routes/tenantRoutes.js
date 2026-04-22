@@ -5,7 +5,6 @@ const Tenant = require('../models/Tenant');
 const House = require('../models/House');
 const auth = require('../middleware/authMiddleware');
 
-
 // =====================
 // CREATE TENANT
 // =====================
@@ -24,16 +23,17 @@ router.post('/', auth, async (req, res) => {
       house: null
     });
 
-    return res.status(201).json(tenant);
+    const populated = await Tenant.findById(tenant._id).populate('house');
+
+    res.status(201).json(populated);
 
   } catch (err) {
-    return res.status(500).json({
+    res.status(500).json({
       message: "Failed to create tenant",
       error: err.message
     });
   }
 });
-
 
 // =====================
 // GET ALL TENANTS
@@ -44,19 +44,18 @@ router.get('/', auth, async (req, res) => {
       .populate('house')
       .sort({ createdAt: -1 });
 
-    return res.status(200).json(tenants || []);
+    res.json(tenants || []);
 
   } catch (err) {
-    return res.status(500).json({
+    res.status(500).json({
       message: "Failed to load tenants",
       error: err.message
     });
   }
 });
 
-
 // =====================
-// ASSIGN HOUSE TO TENANT (FIXED & SAFE)
+// ASSIGN HOUSE (FIXED RESPONSE)
 // =====================
 router.put('/:id/assign', auth, async (req, res) => {
   try {
@@ -73,20 +72,14 @@ router.put('/:id/assign', auth, async (req, res) => {
       return res.status(404).json({ message: "Tenant or House not found" });
     }
 
-    // ❌ block if house is taken by another tenant
-    if (
-      newHouse.status === "occupied" &&
-      String(newHouse.tenant) !== String(tenant._id)
-    ) {
+    if (newHouse.status === "occupied" &&
+        String(newHouse.tenant) !== String(tenant._id)) {
       return res.status(400).json({ message: "House already occupied" });
     }
 
-    // =====================
-    // FREE OLD HOUSE (VERY IMPORTANT FIX)
-    // =====================
+    // free old house
     if (tenant.house) {
       const oldHouse = await House.findById(tenant.house);
-
       if (oldHouse && String(oldHouse._id) !== String(newHouse._id)) {
         oldHouse.status = "available";
         oldHouse.tenant = null;
@@ -94,17 +87,13 @@ router.put('/:id/assign', auth, async (req, res) => {
       }
     }
 
-    // =====================
-    // CLEAN ANY WRONG LINKS (extra safety)
-    // =====================
+    // cleanup wrong links
     await House.updateMany(
       { tenant: tenant._id },
       { $set: { status: "available", tenant: null } }
     );
 
-    // =====================
-    // ASSIGN NEW HOUSE
-    // =====================
+    // assign
     tenant.house = newHouse._id;
     await tenant.save();
 
@@ -112,23 +101,24 @@ router.put('/:id/assign', auth, async (req, res) => {
     newHouse.tenant = tenant._id;
     await newHouse.save();
 
-    return res.json({
+    // 🔥 RETURN UPDATED TENANT (IMPORTANT FIX)
+    const updatedTenant = await Tenant.findById(tenant._id).populate('house');
+
+    res.json({
       message: "Tenant assigned successfully",
-      tenantId: tenant._id,
-      houseId: newHouse._id
+      tenant: updatedTenant
     });
 
   } catch (err) {
-    return res.status(500).json({
+    res.status(500).json({
       message: "Assignment failed",
       error: err.message
     });
   }
 });
 
-
 // =====================
-// DELETE TENANT (SAFE MOVE-OUT)
+// DELETE TENANT
 // =====================
 router.delete('/:id', auth, async (req, res) => {
   try {
@@ -138,10 +128,8 @@ router.delete('/:id', auth, async (req, res) => {
       return res.status(404).json({ message: "Tenant not found" });
     }
 
-    // free assigned house
     if (tenant.house) {
       const house = await House.findById(tenant.house);
-
       if (house) {
         house.status = "available";
         house.tenant = null;
@@ -149,7 +137,6 @@ router.delete('/:id', auth, async (req, res) => {
       }
     }
 
-    // safety cleanup
     await House.updateMany(
       { tenant: tenant._id },
       { $set: { status: "available", tenant: null } }
@@ -157,12 +144,10 @@ router.delete('/:id', auth, async (req, res) => {
 
     await tenant.deleteOne();
 
-    return res.json({
-      message: "Tenant removed successfully"
-    });
+    res.json({ message: "Tenant removed successfully" });
 
   } catch (err) {
-    return res.status(500).json({
+    res.status(500).json({
       message: "Failed to delete tenant",
       error: err.message
     });

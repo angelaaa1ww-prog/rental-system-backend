@@ -2,37 +2,23 @@ const mongoose = require('mongoose');
 
 const tenantSchema = new mongoose.Schema(
   {
-    name: {
-      type: String,
-      required: true,
-      trim: true
-    },
-
-    phone: {
-      type: String,
-      required: true,
-      trim: true
-    },
-
-    idNumber: {
-      type: String,
-      required: true,
-      trim: true,
-      unique: true // ✅ prevents duplicate tenants by ID number
-    },
+    name: String,
+    phone: String,
+    idNumber: { type: String, unique: true },
 
     house: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "House",
       default: null
+    },
+
+    // ⭐ NEW
+    dueDate: {
+      type: Date,
+      default: null
     }
   },
-  {
-    timestamps: true
-  }
+  { timestamps: true }
 );
-
-// optional safety index (helps performance)
-tenantSchema.index({ idNumber: 1 });
 
 module.exports = mongoose.model('Tenant', tenantSchema);

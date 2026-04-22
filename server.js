@@ -17,7 +17,12 @@ app.use(express.json());
 connectDB();
 
 // =====================
-// SAFE ROUTE LOADING
+// CRON JOB (AUTO REMINDERS)
+// =====================
+require("./cron/rentCron"); // ✅ single source of truth for reminders
+
+// =====================
+// ROUTE LOADER
 // =====================
 const loadRoute = (path, route) => {
   try {
@@ -36,11 +41,8 @@ loadRoute('/api/tenants', './routes/tenantRoutes');
 loadRoute('/api/houses', './routes/houseRoutes');
 loadRoute('/api/payments', './routes/paymentRoutes');
 loadRoute('/api/dashboard', './routes/dashboardRoutes');
-
-// =====================
-// 🏢 APARTMENTS SYSTEM (NEW)
-// =====================
-loadRoute('/api/apartments', './routes/apartmentRoutes');
+loadRoute('/api/reminders', './routes/reminderRoutes');
+loadRoute('/api/mpesa', './routes/mpesaCallbackRoutes');
 
 // =====================
 // OPTIONAL ROUTES
@@ -53,7 +55,7 @@ loadRoute('/api/rent', './routes/rentRoutes');
 app.get('/', (req, res) => {
   res.json({
     status: "Rental System API Running",
-    version: "2.0 - Apartment System Enabled",
+    version: "2.0 Clean Stable Build",
     time: new Date().toISOString()
   });
 });
