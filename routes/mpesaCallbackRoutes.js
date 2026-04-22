@@ -1,74 +1,61 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
 
-const Payment = require('../models/Payment');
-const Tenant = require('../models/Tenant');
-const sendSMS = require('../utils/sms');
-
+const Payment = require("../models/Payment");
 
 // =====================
 // M-PESA CALLBACK
 // =====================
-router.post('/stk', async (req, res) => {
+// Safaricom will POST here after STK push
+router.post("/callback", async (req, res) => {
   try {
     const body = req.body;
 
-    console.log("M-PESA CALLBACK:", JSON.stringify(body, null, 2));
+    const stkCallback = body?.Body?.stkCallback;
 
-    const callback = body?.Body?.stkCallback;
-
-    if (!callback) {
+    if (!stkCallback) {
       return res.status(400).json({ message: "Invalid callback" });
     }
 
-    const resultCode = callback.ResultCode;
-    const metadata = callback.CallbackMetadata?.Item || [];
+    const resultCode = stkCallback.ResultCode;
+    const metadata = stkCallback.CallbackMetadata;
 
-    const getValue = (name) =>
-      metadata.find(item => item.Name === name)?.Value;
+    const checkoutRequestID = stkCallback.CheckoutRequestID;
 
-    const amount = getValue("Amount");
-    const phone = getValue("PhoneNumber");
-    const receipt = getValue("MpesaReceiptNumber");
+    // =====================
+    // FAILED PAYMENT
+    // =====================
+    if (resultCode !== 0) {
+      await Payment.findOneAndUpdate(
+        { reference: checkoutRequestID },
+        { status: "failed" }
+      );
 
-    // =========================
-    // PAYMENT SUCCESS
-    // =========================
-    if (resultCode === 0) {
-
-      const payment = await Payment.findOneAndUpdate(
-        { reference: receipt },
-        { status: "confirmed", mpesaReceipt: receipt },
-        { new: true }
-      ).populate("tenant");
-
-      if (payment?.tenant?.phone) {
-        await sendSMS(
-          payment.tenant.phone,
-          `Payment received successfully. Receipt: ${receipt}. Amount: KES ${amount}`
-        );
-      }
-
-      return res.json({ message: "Payment confirmed" });
+      return res.json({ message: "Payment failed recorded" });
     }
 
-    // =========================
-    // PAYMENT FAILED
-    // =========================
-    await Payment.updateMany(
-      { reference: receipt },
-      { status: "failed" }
+    // =====================
+    // SUCCESS PAYMENT
+    // =====================
+    const items = metadata.Item;
+
+    const amount = items.find(i => i.Name === "Amount")?.Value;
+    const receipt = items.find(i => i.Name === "MpesaReceiptNumber")?.Value;
+
+    await Payment.findOneAndUpdate(
+      { reference: checkoutRequestID },
+      {
+        status: "confirmed",
+        mpesaReceipt: receipt,
+        amount
+      }
     );
 
-    return res.json({ message: "Payment failed" });
+    return res.json({ message: "Payment confirmed" });
 
   } catch (err) {
-    console.error("Callback error:", err.message);
-
-    return res.status(500).json({
-      message: "Callback processing failed",
-      error: err.message
-    });
+    console.error(err.message);
+    res.status(500).json({ message: "Callback error" });
   }
 });
 

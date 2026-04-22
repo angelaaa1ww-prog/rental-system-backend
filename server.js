@@ -6,18 +6,18 @@ const connectDB = require('./config/db');
 const app = express();
 
 // =====================
-// CORE MIDDLEWARE
+// MIDDLEWARE
 // =====================
 app.use(cors());
 app.use(express.json());
 
 // =====================
-// DB CONNECTION
+// DATABASE
 // =====================
 connectDB();
 
 // =====================
-// CRON JOB (AUTO REMINDERS)
+// CRON JOB
 // =====================
 require("./cron/rentCron");
 
@@ -29,12 +29,12 @@ const loadRoute = (path, route) => {
     app.use(path, require(route));
     console.log(`Loaded: ${path}`);
   } catch (err) {
-    console.log(`Skipped ${path} (missing or broken)`);
+    console.log(`❌ Failed: ${path}`);
   }
 };
 
 // =====================
-// CORE ROUTES
+// ROUTES
 // =====================
 loadRoute('/api/auth', './routes/authRoutes');
 loadRoute('/api/tenants', './routes/tenantRoutes');
@@ -45,30 +45,22 @@ loadRoute('/api/reminders', './routes/reminderRoutes');
 loadRoute('/api/mpesa', './routes/mpesaCallbackRoutes');
 loadRoute('/api/sms', './routes/smsRoutes');
 loadRoute('/api/reports', './routes/reportRoutes');
-loadRoute('/api/sms', './routes/smsRoutes');
-
-// =====================
-// OPTIONAL ROUTES
-// =====================
 loadRoute('/api/rent', './routes/rentRoutes');
 
 // =====================
-// SMS SETUP
+// SMS TEST ROUTE
 // =====================
 const sendSMS = require('./utils/sms');
 
-// =====================
-// TEST SMS ROUTE
-// =====================
 app.get('/test-sms', async (req, res) => {
   try {
     const result = await sendSMS(
-      "+254741642131", // ⚠️ replace with YOUR real number
-      "Test SMS from Rental System - Africa's Talking activation check"
+      "+254793674816",
+      "Test SMS from Rental System - Africa's Talking check"
     );
 
     res.json({
-      message: "SMS request sent",
+      message: "SMS sent",
       result
     });
 
@@ -86,7 +78,7 @@ app.get('/test-sms', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     status: "Rental System API Running",
-    version: "2.0 Clean Stable Build",
+    version: "2.0 Stable",
     time: new Date().toISOString()
   });
 });
@@ -95,7 +87,7 @@ app.get('/', (req, res) => {
 // ERROR HANDLER
 // =====================
 app.use((err, req, res, next) => {
-  console.error("Server Error:", err.message);
+  console.error(err.message);
   res.status(500).json({ message: "Internal server error" });
 });
 

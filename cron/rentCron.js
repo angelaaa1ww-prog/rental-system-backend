@@ -26,8 +26,10 @@ cron.schedule("0 8 * * *", async () => {
         status: "confirmed"
       });
 
-      const paid = payments.reduce((sum, p) => sum + p.amount, 0);
-      const balance = rent - paid;
+      const totalIncome = payments
+        .filter(p => p.status === "confirmed")
+        .reduce((sum, p) => sum + p.amount, 0);
+      const balance = rent - totalIncome;
 
       const dueDate = tenant.dueDate;
 
