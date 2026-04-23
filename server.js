@@ -1,36 +1,56 @@
 require('dotenv').config();
 const express = require('express');
-const cors    = require('cors');
+const cors = require('cors');
 const connectDB = require('./config/db');
 
 const app = express();
 
-// =====================
-// MIDDLEWARE
-// =====================
-const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:3000').split(',');
+/* =========================
+   CORS (FIXED PROPERLY)
+========================= */
+
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173'
+];
+
 app.use(cors({
-  origin: (origin, cb) => {
-    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
-    cb(new Error('Not allowed by CORS'));
+  origin: function (origin, callback) {
+    // allow tools like Postman / server-to-server requests
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    console.log("❌ Blocked by CORS:", origin);
+    return callback(new Error('Not allowed by CORS'));
   },
   credentials: true
 }));
+
+/* =========================
+   MIDDLEWARE
+========================= */
+
 app.use(express.json());
 
-// =====================
-// DATABASE
-// =====================
+/* =========================
+   DATABASE
+========================= */
+
 connectDB();
 
-// =====================
-// CRON JOB
-// =====================
+/* =========================
+   CRON JOB
+========================= */
+
 require('./cron/rentCron');
 
-// =====================
-// ROUTES
-// =====================
+/* =========================
+   ROUTES LOADER
+========================= */
+
 const loadRoute = (path, route) => {
   try {
     app.use(path, require(route));
@@ -51,37 +71,46 @@ loadRoute('/api/sms',       './routes/smsRoutes');
 loadRoute('/api/reports',   './routes/reportRoutes');
 loadRoute('/api/rent',      './routes/rentRoutes');
 
-// =====================
-// HEALTH CHECK
-// =====================
+/* =========================
+   HEALTH CHECK
+========================= */
+
 app.get('/', (req, res) => {
   res.json({
-    status:  'Rental System API Running',
+    status: 'Rental System API Running',
     version: '3.0 Production',
-    time:    new Date().toISOString()
+    time: new Date().toISOString()
   });
 });
 
-// =====================
-// 404 HANDLER
-// =====================
+/* =========================
+   404 HANDLER
+========================= */
+
 app.use((req, res) => {
-  res.status(404).json({ message: `Route ${req.method} ${req.path} not found` });
+  res.status(404).json({
+    message: `Route ${req.method} ${req.path} not found`
+  });
 });
 
-// =====================
-// GLOBAL ERROR HANDLER
-// =====================
+/* =========================
+   GLOBAL ERROR HANDLER
+========================= */
+
 app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err.message);
-  res.status(500).json({ message: 'Internal server error' });
+  console.error('🔥 Server Error:', err.message);
+  res.status(500).json({
+    message: err.message || 'Internal server error'
+  });
 });
 
-// =====================
-// START SERVER
-// =====================
+/* =========================
+   START SERVER
+========================= */
+
 const PORT = process.env.PORT || 5000;
+
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`   Admin email: ${process.env.ADMIN_EMAIL || 'admin@rentals.co.ke'}`);
+  console.log(`📌 Admin: ${process.env.ADMIN_EMAIL || 'admin@rentals.co.ke'}`);
 });
