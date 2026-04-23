@@ -66,6 +66,7 @@ loadRoute('/api/houses',    './routes/houseRoutes');
 loadRoute('/api/payments',  './routes/paymentRoutes');
 loadRoute('/api/dashboard', './routes/dashboardRoutes');
 loadRoute('/api/reminders', './routes/reminderRoutes');
+loadRoute('/api/mpesa',     './routes/mpesaRoutes');
 loadRoute('/api/mpesa',     './routes/mpesaCallbackRoutes');
 loadRoute('/api/sms',       './routes/smsRoutes');
 loadRoute('/api/reports',   './routes/reportRoutes');
