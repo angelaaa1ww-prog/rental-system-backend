@@ -1,43 +1,58 @@
-const express = require('express');
-const router = express.Router();
+const express  = require('express');
+const router   = express.Router();
+const Tenant   = require('../models/Tenant');
+const Payment  = require('../models/Payment');
+const auth     = require('../middleware/authMiddleware');
 
-const Tenant = require('../models/Tenant');
-const Payment = require('../models/Payment');
-const auth = require('../middleware/authMiddleware');
-
+// =====================
+// GET OVERDUE REMINDERS
+// =====================
 router.get('/', auth, async (req, res) => {
   try {
-    const tenants = await Tenant.find().populate('house');
+    const tenants = await Tenant.find({ active: true }).populate('house');
 
-    const today = new Date();
+    // Batch all payments in ONE query (fixes N+1 bug)
+    const allPayments = await Payment.find({ status: 'confirmed' });
+    const paymentMap  = {};
+    allPayments.forEach(p => {
+      const id = String(p.tenant);
+      paymentMap[id] = (paymentMap[id] || 0) + (p.amount || 0);
+    });
 
+    const today     = new Date();
     const reminders = [];
 
-    for (let t of tenants) {
-      if (!t.house || !t.dueDate) continue;
+    for (const t of tenants) {
+      if (!t.house) continue;
 
-      const rent = t.house.rent;
-
-      const payments = await Payment.find({ tenant: t._id });
-      const paid = payments.reduce((sum, p) => sum + p.amount, 0);
-
+      const rent    = t.house.rent || 0;
+      const paid    = paymentMap[String(t._id)] || 0;
       const balance = rent - paid;
 
-      const daysLeft =
-        Math.ceil((t.dueDate - today) / (1000 * 60 * 60 * 24));
+      if (balance <= 0) continue;
 
-      if (daysLeft <= 10 && balance > 0) {
-        reminders.push({
-          name: t.name,
-          message: `Due in ${daysLeft} days. Balance: ${balance}`
-        });
-      }
+      const daysLeft = t.dueDate
+        ? Math.ceil((new Date(t.dueDate) - today) / (1000 * 60 * 60 * 24))
+        : -1;
+
+      reminders.push({
+        _id:      t._id,
+        name:     t.name,
+        phone:    t.phone,
+        house:    t.house.houseNumber,
+        rent,
+        paid,
+        balance,
+        daysLeft,
+        message:  daysLeft < 0
+          ? `Overdue by ${Math.abs(daysLeft)} day(s). Balance: KES ${balance.toLocaleString()}`
+          : `Due in ${daysLeft} day(s). Balance: KES ${balance.toLocaleString()}`
+      });
     }
 
-    res.json(reminders);
-
+    return res.json(reminders);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    return res.status(500).json({ message: err.message });
   }
 });
 

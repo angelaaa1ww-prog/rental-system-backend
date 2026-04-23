@@ -1,79 +1,66 @@
-const cron = require('node-cron');
-
-const Tenant = require('../models/Tenant');
+const cron    = require('node-cron');
+const Tenant  = require('../models/Tenant');
 const Payment = require('../models/Payment');
 const sendSMS = require('../utils/sms');
 
+// =====================
+// SMART RENT REMINDER — runs every day at 8:00 AM
+// =====================
+cron.schedule('0 8 * * *', async () => {
+  console.log('🔔 Running daily rent reminder cron...');
 
-// =====================
-// SMART RENT SYSTEM
-// =====================
-cron.schedule("0 8 * * *", async () => {
   try {
-    console.log("🔔 Running SMART rent system...");
+    const tenants = await Tenant.find({ active: true }).populate('house');
 
-    const tenants = await Tenant.find().populate('house');
+    // Batch all confirmed payments in ONE query
+    const allPayments = await Payment.find({ status: 'confirmed' });
+    const paymentMap  = {};
+    allPayments.forEach(p => {
+      const id = String(p.tenant);
+      paymentMap[id] = (paymentMap[id] || 0) + (p.amount || 0);
+    });
 
     const today = new Date();
 
-    for (let tenant of tenants) {
+    for (const tenant of tenants) {
       if (!tenant.house || !tenant.phone) continue;
 
-      const rent = tenant.house.rent;
-
-      const payments = await Payment.find({
-        tenant: tenant._id,
-        status: "confirmed"
-      });
-
-      const totalIncome = payments
-        .filter(p => p.status === "confirmed")
-        .reduce((sum, p) => sum + p.amount, 0);
-      const balance = rent - totalIncome;
-
+      const rent    = tenant.house.rent || 0;
+      const paid    = paymentMap[String(tenant._id)] || 0;
+      const balance = rent - paid;
       const dueDate = tenant.dueDate;
 
-      // =========================
-      // CASE 1: NO DUE DATE
-      // =========================
       if (!dueDate) continue;
 
-      const diffTime = dueDate - today;
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      const diffDays = Math.ceil((new Date(dueDate) - today) / (1000 * 60 * 60 * 24));
 
-      // =========================
-      // 10 DAYS BEFORE DUE
-      // =========================
+      // 10 days before due
       if (diffDays === 10) {
         await sendSMS(
           tenant.phone,
-          `Hi ${tenant.name}, rent of KES ${rent} is due in 10 days. Please prepare payment.`
-        );
+          `Hi ${tenant.name}, your rent of KES ${rent.toLocaleString()} is due in 10 days. Please prepare your payment. - Rental Manager`
+        ).catch(e => console.error(`SMS failed for ${tenant.name}:`, e.message));
       }
 
-      // =========================
-      // DUE TODAY
-      // =========================
-      if (diffDays === 0) {
+      // Due today
+      if (diffDays === 0 && balance > 0) {
         await sendSMS(
           tenant.phone,
-          `Hi ${tenant.name}, your rent of KES ${rent} is due TODAY. Please pay to avoid penalties.`
-        );
+          `Hi ${tenant.name}, your rent of KES ${rent.toLocaleString()} is due TODAY. Please pay to avoid penalties. - Rental Manager`
+        ).catch(e => console.error(`SMS failed for ${tenant.name}:`, e.message));
       }
 
-      // =========================
-      // OVERDUE
-      // =========================
+      // Overdue
       if (diffDays < 0 && balance > 0) {
         await sendSMS(
           tenant.phone,
-          `OVERDUE NOTICE: Hi ${tenant.name}, your rent balance is KES ${balance}. Please clear immediately to avoid eviction action.`
-        );
+          `OVERDUE: Hi ${tenant.name}, your rent balance is KES ${balance.toLocaleString()}. Please clear immediately to avoid further action. - Rental Manager`
+        ).catch(e => console.error(`SMS failed for ${tenant.name}:`, e.message));
       }
-
     }
 
+    console.log('✅ Rent reminder cron complete.');
   } catch (err) {
-    console.log("SMART CRON ERROR:", err.message);
+    console.error('❌ Rent cron error:', err.message);
   }
 });

@@ -3,16 +3,14 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
-const SECRET = process.env.JWT_SECRET || "mysecretkey";
+const SECRET = process.env.JWT_SECRET || 'rental_secret_change_me';
 
+// Read from env — fallback to safe defaults for dev only
+const ADMIN_EMAIL    = process.env.ADMIN_EMAIL    || 'admin@rentals.co.ke';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin1234';
 
-// TEMP USER (for development only)
-const user = {
-  email: "admin@test.com",
-  password: bcrypt.hashSync("1234", 10),
-  role: "admin"
-};
-
+// Hash once at startup (not on every request)
+const HASHED_PASSWORD = bcrypt.hashSync(ADMIN_PASSWORD, 10);
 
 // =====================
 // LOGIN
@@ -21,50 +19,37 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // basic validation
     if (!email || !password) {
-      return res.status(400).json({
-        message: "Email and password required"
-      });
+      return res.status(400).json({ message: 'Email and password required' });
     }
 
-    // check user
-    if (email !== user.email) {
-      return res.status(400).json({
-        message: "User not found"
-      });
+    if (email.toLowerCase().trim() !== ADMIN_EMAIL.toLowerCase().trim()) {
+      return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // verify password
-    const isMatch = await bcrypt.compare(password, user.password);
-
+    const isMatch = await bcrypt.compare(password, HASHED_PASSWORD);
     if (!isMatch) {
-      return res.status(400).json({
-        message: "Invalid credentials"
-      });
+      return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // generate token
     const token = jwt.sign(
-      {
-        email: user.email,
-        role: user.role
-      },
+      { email: ADMIN_EMAIL, role: 'admin' },
       SECRET,
-      { expiresIn: "1d" }
+      { expiresIn: '7d' }
     );
 
-    return res.json({
-      token,
-      role: user.role
-    });
+    return res.json({ token, role: 'admin' });
 
   } catch (err) {
-    return res.status(500).json({
-      message: "Login error",
-      error: err.message
-    });
+    return res.status(500).json({ message: 'Login error', error: err.message });
   }
+});
+
+// =====================
+// VERIFY TOKEN
+// =====================
+router.get('/verify', require('../middleware/authMiddleware'), (req, res) => {
+  res.json({ valid: true, user: req.user });
 });
 
 module.exports = router;
