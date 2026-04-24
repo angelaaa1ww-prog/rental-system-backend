@@ -1,49 +1,39 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
+
+// =============================================
+// UPDATED PAYMENT MODEL
+// Added: status field (pending | confirmed | failed)
+// This is needed for Daraja STK push flow
+// =============================================
 
 const paymentSchema = new mongoose.Schema(
   {
     tenant: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Tenant',
-      required: true
+      type:     mongoose.Schema.Types.ObjectId,
+      ref:      "Tenant",
+      required: true,
     },
 
     amount: {
-      type: Number,
+      type:     Number,
       required: true,
-      min: 1
     },
 
+    // M-Pesa receipt (e.g. QKA1234XYZ) or CheckoutRequestID while pending
     reference: {
       type: String,
-      default: ''
     },
 
-    // 'confirmed' for manual cash, updated by MPESA callback
+    // pending → waiting for M-Pesa callback
+    // confirmed → Safaricom confirmed payment
+    // failed → tenant cancelled or payment failed
     status: {
-      type: String,
-      enum: ['pending', 'confirmed', 'failed'],
-      default: 'confirmed'
+      type:    String,
+      enum:    ["pending", "confirmed", "failed"],
+      default: "confirmed",   // manual payments stay confirmed
     },
-
-    paymentMethod: {
-      type: String,
-      enum: ['cash', 'mpesa', 'bank', 'other'],
-      default: 'cash'
-    },
-
-    // Populated by MPESA callback
-    mpesaReceipt: {
-      type: String,
-      default: null
-    },
-
-    note: {
-      type: String,
-      default: ''
-    }
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model('Payment', paymentSchema);
+module.exports = mongoose.model("Payment", paymentSchema);

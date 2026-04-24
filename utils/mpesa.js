@@ -1,61 +1,113 @@
-const AfricasTalking = require("africastalking");
+const axios = require("axios");
 
-// INIT CORRECTLY
-const at = AfricasTalking({
-  apiKey: process.env.AT_API_KEY,
-  username: process.env.AT_USERNAME
-});
+// =============================================
+// DARAJA CONFIG (reads from your .env)
+// =============================================
+const {
+  MPESA_CONSUMER_KEY,
+  MPESA_CONSUMER_SECRET,
+  MPESA_SHORTCODE,
+  MPESA_PASSKEY,
+  MPESA_CALLBACK_URL,
+  MPESA_ENV,             // "sandbox" or "production"
+} = process.env;
 
-const payments = at.PAYMENTS;
+// Base URL switches between sandbox and live automatically
+const BASE_URL =
+  MPESA_ENV === "production"
+    ? "https://api.safaricom.co.ke"
+    : "https://sandbox.safaricom.co.ke";
 
-/**
- * FORMAT KENYA NUMBER
- */
-const formatPhone = (phone) => {
-  if (!phone) return phone;
 
-  if (phone.startsWith("0")) {
-    return "+254" + phone.substring(1);
-  }
+// =============================================
+// STEP 1 — GET OAUTH ACCESS TOKEN
+// =============================================
+const getAccessToken = async () => {
+  const credentials = Buffer.from(
+    `${MPESA_CONSUMER_KEY}:${MPESA_CONSUMER_SECRET}`
+  ).toString("base64");
 
-  if (phone.startsWith("254")) {
-    return "+" + phone;
-  }
+  const res = await axios.get(
+    `${BASE_URL}/oauth/v1/generate?grant_type=client_credentials`,
+    {
+      headers: {
+        Authorization: `Basic ${credentials}`,
+      },
+    }
+  );
 
-  if (phone.startsWith("+")) return phone;
-
-  return "+254" + phone;
+  return res.data.access_token;
 };
 
-/**
- * STK PUSH (FIXED VERSION)
- */
-const stkPush = async (phone, amount) => {
-  const formattedPhone = formatPhone(phone);
 
-  console.log("👉 STK PUSH REQUEST:", formattedPhone, amount);
+// =============================================
+// STEP 2 — GENERATE PASSWORD + TIMESTAMP
+// =============================================
+const getTimestampAndPassword = () => {
+  const now    = new Date();
+  const pad    = (n) => String(n).padStart(2, "0");
 
-  // SAFETY CHECK
-  if (!payments) {
-    throw new Error("Africa's Talking PAYMENTS not enabled for this account");
-  }
+  const timestamp =
+    `${now.getFullYear()}` +
+    `${pad(now.getMonth() + 1)}` +
+    `${pad(now.getDate())}` +
+    `${pad(now.getHours())}` +
+    `${pad(now.getMinutes())}` +
+    `${pad(now.getSeconds())}`;
 
-  try {
-    const result = await payments.mobileCheckout({
-      productName: process.env.AT_PRODUCT_NAME || "RentalSystem",
-      phoneNumber: formattedPhone,
-      currencyCode: "KES",
-      amount: Number(amount)
-    });
+  // Password = Base64(Shortcode + Passkey + Timestamp)
+  const password = Buffer.from(
+    `${MPESA_SHORTCODE}${MPESA_PASSKEY}${timestamp}`
+  ).toString("base64");
 
-    console.log("✅ STK RESPONSE:", result);
-
-    return result;
-
-  } catch (err) {
-    console.log("❌ STK ERROR:", err);
-    throw new Error(err.message);
-  }
+  return { timestamp, password };
 };
 
-module.exports = { stkPush };
+
+// =============================================
+// STEP 3 — STK PUSH (sends M-Pesa prompt to phone)
+// =============================================
+const stkPush = async ({ phone, amount, accountRef, description }) => {
+  const token = await getAccessToken();
+  const { timestamp, password } = getTimestampAndPassword();
+
+  // Format phone: 0712345678 → 254712345678
+  let formattedPhone = String(phone).trim();
+  if (formattedPhone.startsWith("0")) {
+    formattedPhone = "254" + formattedPhone.substring(1);
+  } else if (formattedPhone.startsWith("+")) {
+    formattedPhone = formattedPhone.substring(1);
+  }
+
+  const payload = {
+    BusinessShortCode: MPESA_SHORTCODE,
+    Password:          password,
+    Timestamp:         timestamp,
+    TransactionType:   "CustomerPayBillOnline",
+    Amount:            Math.round(amount),       // must be integer
+    PartyA:            formattedPhone,           // tenant phone
+    PartyB:            MPESA_SHORTCODE,          // your shortcode
+    PhoneNumber:       formattedPhone,           // same as PartyA
+    CallBackURL:       MPESA_CALLBACK_URL,       // your callback endpoint
+    AccountReference:  accountRef || "Rent",
+    TransactionDesc:   description || "Rent Payment",
+  };
+
+  const res = await axios.post(
+    `${BASE_URL}/mpesa/stkpush/v1/processrequest`,
+    payload,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  return res.data;
+};
+
+
+// =============================================
+// EXPORT
+// =============================================
+module.exports = { stkPush, getAccessToken };
