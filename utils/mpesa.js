@@ -1,18 +1,14 @@
 const axios = require("axios");
 
-// =============================================
-// DARAJA CONFIG (reads from your .env)
-// =============================================
 const {
   MPESA_CONSUMER_KEY,
   MPESA_CONSUMER_SECRET,
   MPESA_SHORTCODE,
   MPESA_PASSKEY,
   MPESA_CALLBACK_URL,
-  MPESA_ENV,             // "sandbox" or "production"
+  MPESA_ENV,
 } = process.env;
 
-// Base URL switches between sandbox and live automatically
 const BASE_URL =
   MPESA_ENV === "production"
     ? "https://api.safaricom.co.ke"
@@ -20,32 +16,39 @@ const BASE_URL =
 
 
 // =============================================
-// STEP 1 — GET OAUTH ACCESS TOKEN
+// GET ACCESS TOKEN (FIXED ERROR HANDLING)
 // =============================================
 const getAccessToken = async () => {
-  const credentials = Buffer.from(
-    `${MPESA_CONSUMER_KEY}:${MPESA_CONSUMER_SECRET}`
-  ).toString("base64");
+  try {
+    const credentials = Buffer.from(
+      `${MPESA_CONSUMER_KEY}:${MPESA_CONSUMER_SECRET}`
+    ).toString("base64");
 
-  const res = await axios.get(
-    `${BASE_URL}/oauth/v1/generate?grant_type=client_credentials`,
-    {
-      headers: {
-        Authorization: `Basic ${credentials}`,
-      },
-    }
-  );
+    const res = await axios.get(
+      `${BASE_URL}/oauth/v1/generate?grant_type=client_credentials`,
+      {
+        headers: {
+          Authorization: `Basic ${credentials}`,
+        },
+      }
+    );
 
-  return res.data.access_token;
+    return res.data.access_token;
+
+  } catch (err) {
+    console.error("❌ TOKEN ERROR:", err.response?.data || err.message);
+    throw new Error("Failed to generate M-Pesa token");
+  }
 };
 
 
 // =============================================
-// STEP 2 — GENERATE PASSWORD + TIMESTAMP
+// TIMESTAMP + PASSWORD
 // =============================================
 const getTimestampAndPassword = () => {
-  const now    = new Date();
-  const pad    = (n) => String(n).padStart(2, "0");
+  const now = new Date();
+
+  const pad = (n) => String(n).padStart(2, "0");
 
   const timestamp =
     `${now.getFullYear()}` +
@@ -55,7 +58,6 @@ const getTimestampAndPassword = () => {
     `${pad(now.getMinutes())}` +
     `${pad(now.getSeconds())}`;
 
-  // Password = Base64(Shortcode + Passkey + Timestamp)
   const password = Buffer.from(
     `${MPESA_SHORTCODE}${MPESA_PASSKEY}${timestamp}`
   ).toString("base64");
@@ -65,49 +67,62 @@ const getTimestampAndPassword = () => {
 
 
 // =============================================
-// STEP 3 — STK PUSH (sends M-Pesa prompt to phone)
+// STK PUSH (FIXED CORE ISSUES)
 // =============================================
 const stkPush = async ({ phone, amount, accountRef, description }) => {
   const token = await getAccessToken();
   const { timestamp, password } = getTimestampAndPassword();
 
-  // Format phone: 0712345678 → 254712345678
+  if (!token) throw new Error("Missing access token");
+
+  // FIXED phone normalization (VERY IMPORTANT)
   let formattedPhone = String(phone).trim();
+
   if (formattedPhone.startsWith("0")) {
-    formattedPhone = "254" + formattedPhone.substring(1);
-  } else if (formattedPhone.startsWith("+")) {
-    formattedPhone = formattedPhone.substring(1);
+    formattedPhone = "254" + formattedPhone.slice(1);
   }
+
+  if (formattedPhone.startsWith("+")) {
+    formattedPhone = formattedPhone.replace("+", "");
+  }
+
+  // FORCE integer amount
+  const safeAmount = parseInt(amount, 10);
 
   const payload = {
     BusinessShortCode: MPESA_SHORTCODE,
-    Password:          password,
-    Timestamp:         timestamp,
-    TransactionType:   "CustomerPayBillOnline",
-    Amount:            Math.round(amount),       // must be integer
-    PartyA:            formattedPhone,           // tenant phone
-    PartyB:            MPESA_SHORTCODE,          // your shortcode
-    PhoneNumber:       formattedPhone,           // same as PartyA
-    CallBackURL:       MPESA_CALLBACK_URL,       // your callback endpoint
-    AccountReference:  accountRef || "Rent",
-    TransactionDesc:   description || "Rent Payment",
+    Password: password,
+    Timestamp: timestamp,
+    TransactionType: "CustomerPayBillOnline",
+    Amount: safeAmount,
+    PartyA: formattedPhone,
+    PartyB: MPESA_SHORTCODE,
+    PhoneNumber: formattedPhone,
+    CallBackURL: MPESA_CALLBACK_URL,
+    AccountReference: accountRef || "Rent",
+    TransactionDesc: description || "Rent Payment",
   };
 
-  const res = await axios.post(
-    `${BASE_URL}/mpesa/stkpush/v1/processrequest`,
-    payload,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
-  );
+  try {
+    const res = await axios.post(
+      `${BASE_URL}/mpesa/stkpush/v1/processrequest`,
+      payload,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
 
-  return res.data;
+    console.log("📡 STK RESPONSE:", res.data);
+
+    return res.data;
+
+  } catch (err) {
+    console.error("❌ STK ERROR:", err.response?.data || err.message);
+    throw err;
+  }
 };
 
-
-// =============================================
-// EXPORT
-// =============================================
 module.exports = { stkPush, getAccessToken };
