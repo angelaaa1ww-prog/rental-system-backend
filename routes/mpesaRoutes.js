@@ -5,19 +5,18 @@ const { stkPush } = require("../utils/mpesa");
 const Tenant  = require("../models/Tenant");
 const Payment = require("../models/Payment");
 const auth    = require("../middleware/authMiddleware");
+const { sendSMS } = require("../utils/sms");
 
 
 // =============================================
 // ROUTE 1 — TRIGGER STK PUSH
-// POST /api/mpesa/pay
-// Body: { tenantId, amount }
 // =============================================
 router.post("/pay", auth, async (req, res) => {
   try {
-    const { tenantId, amount } = req.body;
+    const { tenantId } = req.body;
 
-    if (!tenantId || !amount) {
-      return res.status(400).json({ message: "tenantId and amount required" });
+    if (!tenantId) {
+      return res.status(400).json({ message: "tenantId required" });
     }
 
     const tenant = await Tenant.findById(tenantId).populate("house");
@@ -30,9 +29,35 @@ router.post("/pay", auth, async (req, res) => {
       return res.status(400).json({ message: "Tenant has no phone number" });
     }
 
+    // MONTH LOGIC
+    const month = new Date().toISOString().slice(0, 7);
+
+    // BLOCK if already paid this month
+    if (tenant.lastPaidMonth === month) {
+      return res.status(400).json({
+        message: "Rent already paid for this month"
+      });
+    }
+
+    // USE SYSTEM RENT (NOT USER INPUT)
+    const amountToPay = tenant.rentAmount;
+
+    // Prevent duplicate pending payments
+    const existingPending = await Payment.findOne({
+      tenant: tenantId,
+      status: "pending",
+      month: month
+    });
+
+    if (existingPending) {
+      return res.status(400).json({
+        message: "There is already a pending payment for this month"
+      });
+    }
+
     const result = await stkPush({
       phone: tenant.phone,
-      amount: Number(amount),
+      amount: amountToPay,
       accountRef: tenant.house?.houseNumber || "Rent",
       description: `Rent - ${tenant.name}`,
     });
@@ -46,9 +71,10 @@ router.post("/pay", auth, async (req, res) => {
 
     await Payment.create({
       tenant: tenantId,
-      amount: Number(amount),
+      amount: amountToPay,
       reference: result.CheckoutRequestID,
       status: "pending",
+      month: month
     });
 
     res.json({
@@ -72,7 +98,7 @@ router.post("/pay", auth, async (req, res) => {
 // =============================================
 router.post("/callback", async (req, res) => {
   try {
-    console.log("📲 M-PESA CALLBACK RECEIVED:", JSON.stringify(req.body, null, 2));
+    console.log("📲 CALLBACK:", JSON.stringify(req.body, null, 2));
 
     const stkCallback = req.body?.Body?.stkCallback;
 
@@ -91,18 +117,36 @@ router.post("/callback", async (req, res) => {
     const amount = getMeta("Amount");
     const phone = getMeta("PhoneNumber");
 
+    const payment = await Payment.findOne({ reference: checkoutId });
+
+    if (!payment) {
+      return res.json({ ResultCode: 0, ResultDesc: "Payment not found" });
+    }
+
     if (resultCode === 0) {
+
       await Payment.findOneAndUpdate(
         { reference: checkoutId },
         {
           status: "confirmed",
           mpesaReceipt: mpesaCode,
-          amount: amount,
-          phone: phone,
+          amount,
+          phone
         }
       );
 
-      console.log(`✅ Payment confirmed: ${mpesaCode} | KES ${amount} | ${phone}`);
+      // UPDATE TENANT MONTH TRACKING
+      await Tenant.findByIdAndUpdate(payment.tenant, {
+        lastPaidMonth: payment.month
+      });
+
+      // SEND SMS
+      await sendSMS(
+        phone,
+        `Rent received: KES ${amount}. Receipt: ${mpesaCode}.`
+      );
+
+      console.log(`✅ Payment confirmed: ${mpesaCode}`);
 
     } else {
       await Payment.findOneAndUpdate(
@@ -140,6 +184,7 @@ router.get("/status/:checkoutId", auth, async (req, res) => {
       amount: payment.amount,
       tenant: payment.tenant?.name,
       reference: payment.reference,
+      month: payment.month
     });
 
   } catch (err) {

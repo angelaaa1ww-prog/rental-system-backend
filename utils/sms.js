@@ -1,54 +1,24 @@
 const AfricasTalking = require("africastalking");
 
-const africasTalking = AfricasTalking({
+const at = AfricasTalking({
+  username: process.env.AT_USERNAME,
   apiKey: process.env.AT_API_KEY,
-  username: process.env.AT_USERNAME // sandbox or live
 });
 
-const sms = africasTalking.SMS;
+const sms = at.SMS;
 
-/**
- * FORMAT PHONE NUMBER SAFELY
- */
-const formatPhone = (phone) => {
-  if (!phone) return phone;
-
-  // convert 07XXXXXXXX → +2547XXXXXXXX
-  if (phone.startsWith("0")) {
-    return "+254" + phone.substring(1);
-  }
-
-  // already correct
-  if (phone.startsWith("+")) return phone;
-
-  return "+254" + phone;
-};
-
-/**
- * SEND SMS FUNCTION
- */
 const sendSMS = async (phone, message) => {
   try {
-    const formattedPhone = formatPhone(phone);
-
-    console.log("SMS SENDING TO:", formattedPhone);
-
     const result = await sms.send({
-      to: [formattedPhone],
-      message,
-      from: process.env.AT_SENDER_ID || "AFRICASTKNG"
+      to: [phone],
+      message: message,
+      from: process.env.AT_SENDER_ID,
     });
 
-    console.log("SMS RESULT:", result);
-
-    return result;
-
+    console.log("📩 SMS SENT:", result);
   } catch (err) {
-    console.error("SMS ERROR FULL:", err);
-    throw new Error(
-      err?.message || "SMS sending failed"
-    );
+    console.error("SMS ERROR:", err.message);
   }
 };
 
-module.exports = sendSMS;
+module.exports = { sendSMS };

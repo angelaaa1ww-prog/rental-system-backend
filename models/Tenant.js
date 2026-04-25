@@ -14,7 +14,6 @@ const tenantSchema = new mongoose.Schema(
       trim: true
     },
 
-    // sparse: true allows multiple documents to have null/missing idNumber
     idNumber: {
       type: String,
       trim: true,
@@ -29,23 +28,34 @@ const tenantSchema = new mongoose.Schema(
       default: null
     },
 
-    // Date rent is next due — set when house is assigned
+    // when rent is due next
     dueDate: {
       type: Date,
       default: null
     },
 
-    // Date tenant moved in
     moveInDate: {
       type: Date,
       default: null
     },
 
-    // Soft-delete / active flag
     active: {
       type: Boolean,
       default: true
+    },
+
+    // 🔥 NEW: monthly rent amount stored per tenant
+    rentAmount: {
+      type: Number,
+      default: 0
+    },
+
+    // 🔥 NEW: last paid month (prevents duplicate rent)
+    lastPaidMonth: {
+      type: String,
+      default: null // format: "2026-04"
     }
+
   },
   { timestamps: true }
 );
