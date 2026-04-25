@@ -16,7 +16,7 @@ const BASE_URL =
 
 
 // =============================================
-// GET ACCESS TOKEN (FIXED ERROR HANDLING)
+// GET ACCESS TOKEN
 // =============================================
 const getAccessToken = async () => {
   try {
@@ -47,7 +47,6 @@ const getAccessToken = async () => {
 // =============================================
 const getTimestampAndPassword = () => {
   const now = new Date();
-
   const pad = (n) => String(n).padStart(2, "0");
 
   const timestamp =
@@ -67,28 +66,41 @@ const getTimestampAndPassword = () => {
 
 
 // =============================================
-// STK PUSH (FIXED CORE ISSUES)
+// STK PUSH
 // =============================================
 const stkPush = async ({ phone, amount, accountRef, description }) => {
   const token = await getAccessToken();
   const { timestamp, password } = getTimestampAndPassword();
 
-  if (!token) throw new Error("Missing access token");
+  if (!token) {
+    throw new Error("Access token missing");
+  }
 
-  // FIXED phone normalization (VERY IMPORTANT)
+  // -----------------------------
+  // PHONE NORMALIZATION (STRICT)
+  // -----------------------------
   let formattedPhone = String(phone).trim();
+
+  if (formattedPhone.startsWith("+")) {
+    formattedPhone = formattedPhone.slice(1);
+  }
 
   if (formattedPhone.startsWith("0")) {
     formattedPhone = "254" + formattedPhone.slice(1);
   }
 
-  if (formattedPhone.startsWith("+")) {
-    formattedPhone = formattedPhone.replace("+", "");
+  // -----------------------------
+  // AMOUNT VALIDATION (FIX)
+  // -----------------------------
+  const safeAmount = Number(amount);
+
+  if (!Number.isInteger(safeAmount) || safeAmount < 1) {
+    throw new Error(`Invalid M-Pesa amount: ${amount}`);
   }
 
-  // FORCE integer amount
-  const safeAmount = parseInt(amount, 10);
-
+  // -----------------------------
+  // PAYLOAD
+  // -----------------------------
   const payload = {
     BusinessShortCode: MPESA_SHORTCODE,
     Password: password,

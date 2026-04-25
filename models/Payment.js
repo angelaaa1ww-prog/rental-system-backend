@@ -1,51 +1,68 @@
 const mongoose = require("mongoose");
 
 // =============================================
-// PAYMENT MODEL (PRODUCTION READY)
+// PAYMENT MODEL
+// Handles both:
+//   - Manual/cash payments (from paymentRoutes.js)
+//   - M-Pesa STK push payments (from mpesaRoutes.js)
 // =============================================
 
 const paymentSchema = new mongoose.Schema(
   {
+    // Which tenant made this payment
     tenant: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Tenant",
+      type:     mongoose.Schema.Types.ObjectId,
+      ref:      "Tenant",
       required: true,
     },
 
+    // Amount paid in KES
     amount: {
-      type: Number,
+      type:     Number,
       required: true,
     },
 
-    // M-Pesa receipt OR CheckoutRequestID (for tracking)
+    // M-Pesa receipt (e.g. QKA1234XYZ) or manual ref (e.g. PAY-1234567890)
+    // Also used to store CheckoutRequestID while payment is still pending
     reference: {
       type: String,
-      required: true,
     },
 
-    // STATUS FLOW
+    // pending   → STK push sent, waiting for M-Pesa callback
+    // confirmed → Payment received and confirmed
+    // failed    → Tenant cancelled or payment failed
     status: {
-      type: String,
-      enum: ["pending", "confirmed", "failed"],
-      default: "pending",
+      type:    String,
+      enum:    ["pending", "confirmed", "failed"],
+      default: "confirmed", // manual cash payments are instantly confirmed
     },
 
-    // 🔥 NEW: Month tracking (VERY IMPORTANT for rent system)
-    // format: "2026-04"
+    // Which month this payment covers e.g. "2025-04"
+    // Used to prevent double payments in same month
     month: {
-      type: String,
-      required: true,
+      type:    String,
+      default: null,
     },
 
-    // 🔥 NEW: final M-Pesa receipt number (after callback success)
+    // How was this payment made
+    paymentMethod: {
+      type:    String,
+      enum:    ["cash", "mpesa", "bank", "other"],
+      default: "cash",
+    },
+
+    // M-Pesa receipt number after callback confirms payment
+    // e.g. QKA1234XYZ
     mpesaReceipt: {
-      type: String,
+      type:    String,
+      default: null,
     },
 
-    // optional safety fields (useful later for SMS/logs)
-    phone: {
-      type: String,
-    }
+    // Optional note from admin e.g. "Partial payment", "Arrears"
+    note: {
+      type:    String,
+      default: "",
+    },
   },
   { timestamps: true }
 );

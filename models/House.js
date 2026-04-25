@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const houseSchema = new mongoose.Schema(
   {
@@ -26,9 +26,11 @@ const houseSchema = new mongoose.Schema(
       required: true
     },
 
+    // ✅ THIS is your rent source (used in mpesaRoutes)
     rent: {
       type: Number,
-      required: true
+      required: true,
+      min: 1   // 🔥 prevents 0 or negative rent
     },
 
     status: {
@@ -46,11 +48,7 @@ const houseSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-/**
- * FIXED:
- * Ensures houseNumber is unique ONLY inside each apartment
- * (A-001 can exist, B-001 can exist)
- */
+// 🔒 Unique per apartment
 houseSchema.index(
   { houseNumber: 1, apartment: 1 },
   { unique: true }
