@@ -70,7 +70,6 @@ loadRoute('/api/mpesa',     './routes/mpesaRoutes');
 loadRoute('/api/sms',       './routes/smsRoutes');
 loadRoute('/api/reports',   './routes/reportRoutes');
 loadRoute('/api/rent',      './routes/rentRoutes');
-loadRoute('/api/rent/pay',  './routes/rentPaymentRoutes');
 
 /* =========================
    HEALTH CHECK
@@ -104,7 +103,6 @@ app.use((err, req, res, next) => {
     message: err.message || 'Internal server error'
   });
 });
-app.use('/api/rent', require('./routes/rentPaymentRoutes'));
 
 /* =========================
    START SERVER
