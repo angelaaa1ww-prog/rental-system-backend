@@ -6,44 +6,36 @@ const connectDB = require('./config/db');
 const app = express();
 
 /* =========================
-   CORS (FIXED PROPERLY)
+   CORS (FIXED)
 ========================= */
-
-const allowedOrigins = [
-  'http://https://rental-system-backend-1t05.onrender.com:3000',
-  'http://https://rental-system-backend-1t05.onrender.com:5173'
-];
-
 app.use(cors({
   origin: [
-    "http://https://rental-system-backend-1t05.onrender.com:3000",
+    "http://localhost:3000",
+    "https://rental-system-frontend-drab.vercel.app",
     "https://rental-system-frontend-i4qn0yzpu-angelaaa1ww-progs-projects.vercel.app",
-    "https://rental-system-frontend.vercel.app",
+    "https://rental-system-frontend-on8e2vasg-angelaaa1ww-progs-projects.vercel.app",
   ],
   credentials: true
 }));
+
 /* =========================
    MIDDLEWARE
 ========================= */
-
 app.use(express.json());
 
 /* =========================
    DATABASE
 ========================= */
-
 connectDB();
 
 /* =========================
    CRON JOB
 ========================= */
-
 require('./cron/rentCron');
 
 /* =========================
    ROUTES LOADER
 ========================= */
-
 const loadRoute = (path, route) => {
   try {
     app.use(path, require(route));
@@ -67,7 +59,6 @@ loadRoute('/api/rent',      './routes/rentRoutes');
 /* =========================
    HEALTH CHECK
 ========================= */
-
 app.get('/', (req, res) => {
   res.json({
     status: 'Rental System API Running',
@@ -79,7 +70,6 @@ app.get('/', (req, res) => {
 /* =========================
    404 HANDLER
 ========================= */
-
 app.use((req, res) => {
   res.status(404).json({
     message: `Route ${req.method} ${req.path} not found`
@@ -89,7 +79,6 @@ app.use((req, res) => {
 /* =========================
    GLOBAL ERROR HANDLER
 ========================= */
-
 app.use((err, req, res, next) => {
   console.error('🔥 Server Error:', err.message);
   res.status(500).json({
@@ -100,7 +89,6 @@ app.use((err, req, res, next) => {
 /* =========================
    START SERVER
 ========================= */
-
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
