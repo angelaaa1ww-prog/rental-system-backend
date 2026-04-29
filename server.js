@@ -10,13 +10,13 @@ const app = express();
 ========================= */
 
 const allowedOrigins = [
-  'http://localhost:3000',
-  'http://localhost:5173'
+  'http://https://rental-system-backend-1t05.onrender.com:3000',
+  'http://https://rental-system-backend-1t05.onrender.com:5173'
 ];
 
 app.use(cors({
   origin: [
-    "http://localhost:3000",
+    "http://https://rental-system-backend-1t05.onrender.com:3000",
     "https://rental-system-frontend-i4qn0yzpu-angelaaa1ww-progs-projects.vercel.app",
     "https://rental-system-frontend.vercel.app",
   ],
