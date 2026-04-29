@@ -11,6 +11,7 @@ const app = express();
 app.use(cors({
   origin: [
     "http://localhost:3000",
+    "https://giftedhandsventures.vercel.app",  // ← add this
     "https://rental-system-frontend-drab.vercel.app",
     "https://rental-system-frontend-i4qn0yzpu-angelaaa1ww-progs-projects.vercel.app",
     "https://rental-system-frontend-on8e2vasg-angelaaa1ww-progs-projects.vercel.app",
