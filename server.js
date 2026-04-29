@@ -17,11 +17,11 @@ const allowedOrigins = [
 app.use(cors({
   origin: [
     "http://localhost:3000",
-    "https://rental-system-frontend-i4qn0yzpu-angelaaa1ww-progs-projects.vercel.app/", // ← your real Vercel URL
+    "https://rental-system-frontend-i4qn0yzpu-angelaaa1ww-progs-projects.vercel.app",
+    "https://rental-system-frontend.vercel.app",
   ],
   credentials: true
 }));
-
 /* =========================
    MIDDLEWARE
 ========================= */
