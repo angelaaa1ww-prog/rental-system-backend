@@ -15,17 +15,10 @@ const allowedOrigins = [
 ];
 
 app.use(cors({
-  origin: function (origin, callback) {
-    // allow tools like Postman / server-to-server requests
-    if (!origin) return callback(null, true);
-
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-
-    console.log("❌ Blocked by CORS:", origin);
-    return callback(new Error('Not allowed by CORS'));
-  },
+  origin: [
+    "http://localhost:3000",
+    "https://rental-system-frontend-i4qn0yzpu-angelaaa1ww-progs-projects.vercel.app/", // ← your real Vercel URL
+  ],
   credentials: true
 }));
 
