@@ -11,17 +11,18 @@ const sendSMS = require("../utils/sms");
 // =============================================
 // ROUTE 1 — TRIGGER STK PUSH
 // POST /api/mpesa/pay
-// Body: { tenantId }
+// Body: { tenantId, amount? }
+// amount is optional — falls back to house rent
 // =============================================
 router.post("/pay", auth, async (req, res) => {
   try {
-    const { tenantId } = req.body;
+    const { tenantId, amount } = req.body;
 
     if (!tenantId) {
       return res.status(400).json({ message: "tenantId is required" });
     }
 
-    // Populate house so we can read the rent amount
+    // Populate house so we can read rent amount
     const tenant = await Tenant.findById(tenantId).populate("house");
 
     if (!tenant) {
@@ -33,22 +34,24 @@ router.post("/pay", auth, async (req, res) => {
     }
 
     if (!tenant.house) {
-      return res.status(400).json({ message: "Tenant has no house assigned. Please assign a house first." });
+      return res.status(400).json({
+        message: "Tenant has no house assigned. Please assign a house first."
+      });
     }
 
-    // ✅ FIX: rent lives on the House model, not the Tenant model
-    const amountToPay = Number(tenant.house.rent);
+    // ✅ Use custom amount if provided, otherwise fall back to house rent
+    const amountToPay = amount ? Number(amount) : Number(tenant.house.rent);
 
     if (!amountToPay || amountToPay < 1) {
       return res.status(400).json({
-        message: "House has no rent amount set. Please update the house rent."
+        message: "Invalid amount. Please enter a valid amount or set rent on the house."
       });
     }
 
     const month = new Date().toISOString().slice(0, 7); // e.g. "2025-04"
 
-    // Check if already paid this month
-    if (tenant.lastPaidMonth === month) {
+    // Check if tenant already paid this month (only block if full house rent amount)
+    if (tenant.lastPaidMonth === month && !amount) {
       return res.status(400).json({
         message: "Rent already paid for this month"
       });
@@ -63,11 +66,11 @@ router.post("/pay", auth, async (req, res) => {
 
     if (existingPending) {
       return res.status(400).json({
-        message: "There is already a pending M-Pesa payment for this month. Please wait for it to complete."
+        message: "There is already a pending M-Pesa payment. Please wait for it to complete or check Payments page."
       });
     }
 
-    // Trigger the STK push — sends M-Pesa prompt to tenant's phone
+    // Trigger STK push — sends M-Pesa prompt to tenant's phone
     const result = await stkPush({
       phone:       tenant.phone,
       amount:      amountToPay,
@@ -82,13 +85,14 @@ router.post("/pay", auth, async (req, res) => {
       });
     }
 
-    // Save a pending payment — will be confirmed when callback fires
+    // Save a pending payment — confirmed when callback fires
     await Payment.create({
-      tenant:    tenantId,
-      amount:    amountToPay,
-      reference: result.CheckoutRequestID,
-      status:    "pending",
-      month
+      tenant:        tenantId,
+      amount:        amountToPay,
+      reference:     result.CheckoutRequestID,
+      status:        "pending",
+      month,
+      paymentMethod: "mpesa",
     });
 
     res.json({
@@ -112,7 +116,7 @@ router.post("/pay", auth, async (req, res) => {
 // =============================================
 // ROUTE 2 — M-PESA CALLBACK
 // POST /api/mpesa/callback
-// ⚠️ No auth — Safaricom calls this directly
+// ⚠️ No auth middleware — Safaricom calls this directly
 // =============================================
 router.post("/callback", async (req, res) => {
   try {
@@ -142,13 +146,13 @@ router.post("/callback", async (req, res) => {
     }
 
     if (resultCode === 0) {
-      // ✅ Payment successful
+      // ✅ Payment successful — update record
       await Payment.findOneAndUpdate(
         { reference: checkoutId },
         {
           status:       "confirmed",
           mpesaReceipt: mpesaCode,
-          reference:    mpesaCode,  // replace checkoutId with real receipt
+          reference:    mpesaCode,
           amount:       Number(amount) || payment.amount,
         }
       );
@@ -164,11 +168,10 @@ router.post("/callback", async (req, res) => {
         if (tenant?.phone) {
           await sendSMS(
             tenant.phone,
-            `Dear ${tenant.name}, we have received your rent payment of KES ${amount}. Receipt: ${mpesaCode}. Thank you!`
+            `Dear ${tenant.name}, we have received your payment of KES ${Number(amount).toLocaleString()}. M-Pesa Receipt: ${mpesaCode}. Thank you! - Rental Manager`
           );
         }
       } catch (smsErr) {
-        // SMS failure should not affect payment confirmation
         console.error("SMS after payment failed:", smsErr.message);
       }
 
