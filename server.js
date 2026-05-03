@@ -8,14 +8,22 @@ const app = express();
 /* =========================
    CORS (FIXED)
 ========================= */
+const ALLOWED_ORIGINS = [
+  /^http:\/\/localhost(:\d+)?$/,                              // any localhost port
+  /^https:\/\/giftedhandsventures\.vercel\.app$/,            // custom domain
+  /^https:\/\/rental-system-frontend[^.]*\.vercel\.app$/,    // ALL Vercel preview URLs
+  /^https:\/\/[^.]*angelaaa1ww-progs-projects\.vercel\.app$/, // team preview URLs
+];
+
 app.use(cors({
-  origin: [
-    "http://localhost:3000",
-    "https://giftedhandsventures.vercel.app",  // ← add this
-    "https://rental-system-frontend-drab.vercel.app",
-    "https://rental-system-frontend-i4qn0yzpu-angelaaa1ww-progs-projects.vercel.app",
-    "https://rental-system-frontend-on8e2vasg-angelaaa1ww-progs-projects.vercel.app",
-  ],
+  origin: (origin, callback) => {
+    // Allow non-browser requests (curl, Postman, server-to-server)
+    if (!origin) return callback(null, true);
+    const allowed = ALLOWED_ORIGINS.some(pattern => pattern.test(origin));
+    if (allowed) return callback(null, true);
+    console.warn(`🚫 CORS blocked: ${origin}`);
+    callback(new Error(`CORS: origin ${origin} not allowed`));
+  },
   credentials: true
 }));
 
