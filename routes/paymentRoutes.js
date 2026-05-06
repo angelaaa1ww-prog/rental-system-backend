@@ -25,11 +25,14 @@ router.post('/', auth, async (req, res) => {
       return res.status(404).json({ message: 'Tenant not found' });
     }
 
+    const month = new Date().toISOString().slice(0, 7); // e.g. "2025-04"
+
     const payment = await Payment.create({
       tenant:        tenantId,
       amount:        amt,
       reference:     reference || `PAY-${Date.now()}`,
       status:        'confirmed',   // manual payments are instantly confirmed
+      month:         month,
       paymentMethod: paymentMethod || 'cash',
       note:          note || ''
     });
@@ -67,10 +70,20 @@ router.get('/balance/:tenantId', auth, async (req, res) => {
     if (!tenant) return res.status(404).json({ message: 'Tenant not found' });
 
     const rent = tenant.house ? Number(tenant.house.rent) : 0;
+    const currentMonth = new Date().toISOString().slice(0, 7);
+
+    // Only count payments made in the current month (or those without a month created this month for backwards compatibility)
+    const startDate = new Date(`${currentMonth}-01T00:00:00.000Z`);
+    const endDate = new Date(startDate);
+    endDate.setMonth(endDate.getMonth() + 1);
 
     const payments = await Payment.find({
       tenant: req.params.tenantId,
-      status: 'confirmed'
+      status: 'confirmed',
+      $or: [
+        { month: currentMonth },
+        { month: null, createdAt: { $gte: startDate, $lt: endDate } }
+      ]
     });
     const paid    = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
     const balance = Math.max(0, rent - paid);
