@@ -10,24 +10,15 @@ const auth    = require('../middleware/authMiddleware');
 // =====================
 router.post('/', auth, async (req, res) => {
   try {
-    const { name, phone, idNumber } = req.body;
+    const { name, phone } = req.body;
 
     if (!name || !phone) {
       return res.status(400).json({ message: 'Name and phone are required' });
     }
 
-    // Check if ID number already exists (only if provided)
-    if (idNumber && idNumber.trim()) {
-      const existing = await Tenant.findOne({ idNumber: idNumber.trim() });
-      if (existing) {
-        return res.status(400).json({ message: 'A tenant with this ID number already exists' });
-      }
-    }
-
     const tenant = await Tenant.create({
       name:      name.trim(),
       phone:     phone.trim(),
-      idNumber:  idNumber && idNumber.trim() ? idNumber.trim() : null,
       house:     null,
       active:    true
     });
@@ -72,20 +63,12 @@ router.get('/:id', auth, async (req, res) => {
 // =====================
 router.put('/:id', auth, async (req, res) => {
   try {
-    const { name, phone, idNumber } = req.body;
+    const { name, phone } = req.body;
     const tenant = await Tenant.findById(req.params.id);
     if (!tenant) return res.status(404).json({ message: 'Tenant not found' });
 
     if (name  !== undefined) tenant.name  = name.trim();
     if (phone !== undefined) tenant.phone = phone.trim();
-    if (idNumber !== undefined) {
-      const cleaned = idNumber && idNumber.trim() ? idNumber.trim() : null;
-      if (cleaned && cleaned !== tenant.idNumber) {
-        const existing = await Tenant.findOne({ idNumber: cleaned });
-        if (existing) return res.status(400).json({ message: 'ID number already in use' });
-      }
-      tenant.idNumber = cleaned;
-    }
 
     await tenant.save();
     const updated = await Tenant.findById(tenant._id).populate('house');
