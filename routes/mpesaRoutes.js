@@ -5,7 +5,7 @@ const router = express.Router();
 const {
     validatePayment,
     confirmPayment
-} = require("../controllers/mpesaController");
+} = require("../controller/mpesaController");
 
 
 

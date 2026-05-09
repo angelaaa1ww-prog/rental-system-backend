@@ -25,23 +25,28 @@ router.get('/', auth, async (req, res) => {
     const payments = await Payment.find({ status: 'confirmed' });
     const totalIncome = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
 
-    // Build payment map: tenantId → totalPaid
-    const paymentMap = {};
-    payments.forEach(p => {
-      const id = String(p.tenant);
-      paymentMap[id] = (paymentMap[id] || 0) + p.amount;
-    });
-
-    // ── This month's income ───────────────────────────────
     const now   = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), 1);
     const end   = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    const currentMonth = now.toISOString().slice(0, 7);
+
+    // ── This month's income ───────────────────────────────
     const monthlyIncome = payments
       .filter(p => {
         const d = new Date(p.createdAt);
         return d >= start && d <= end;
       })
       .reduce((sum, p) => sum + (p.amount || 0), 0);
+
+    // Build payment map: tenantId → totalPaidTHISMONTH
+    const paymentMap = {};
+    payments.forEach(p => {
+      const isCurrentMonth = p.month === currentMonth || (!p.month && new Date(p.createdAt) >= start && new Date(p.createdAt) <= end);
+      if (isCurrentMonth) {
+        const id = String(p.tenant);
+        paymentMap[id] = (paymentMap[id] || 0) + (p.amount || 0);
+      }
+    });
 
     // ── Tenants & overdue ─────────────────────────────────
     const tenants = await Tenant.find({ active: true }).populate('house');
