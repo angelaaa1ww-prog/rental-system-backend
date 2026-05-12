@@ -8,9 +8,9 @@ const router = express.Router();
 const generateToken = async () => {
     try {
         const auth = Buffer.from(
-            process.env.CONSUMER_KEY +
+            process.env.MPESA_CONSUMER_KEY +
             ":" +
-            process.env.CONSUMER_SECRET
+            process.env.MPESA_CONSUMER_SECRET
         ).toString("base64");
 
         const response = await axios.get(
