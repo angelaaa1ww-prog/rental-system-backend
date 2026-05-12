@@ -67,7 +67,7 @@ loadRoute('/api/mpesa',     './routes/mpesaRoutes');
 loadRoute('/api/sms',       './routes/smsRoutes');
 loadRoute('/api/reports',   './routes/reportRoutes');
 loadRoute('/api/rent',      './routes/rentRoutes');
-
+app.use("/api/c2b", c2bRoutes);
 /* =========================
    HEALTH CHECK
 ========================= */
