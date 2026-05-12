@@ -2,6 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const connectDB = require('./config/db');
+const c2bRoutes =
+require("./routes/c2bRoutes");
 
 const app = express();
 /* =========================
@@ -30,6 +32,8 @@ app.use(cors({
    MIDDLEWARE
 ========================= */
 app.use(express.json());
+
+app.use("/api/c2b", c2bRoutes);
 
 /* =========================
    DATABASE
