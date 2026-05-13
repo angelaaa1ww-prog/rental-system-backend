@@ -2,26 +2,33 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const connectDB = require('./config/db');
-const c2bRoutes =
-require("./routes/c2bRoutes");
+
+const c2bRoutes = require("./routes/c2bRoutes");
 
 const app = express();
+
 /* =========================
-   CORS (FIXED)
+   DATABASE
+========================= */
+connectDB();
+
+/* =========================
+   CORS
 ========================= */
 const ALLOWED_ORIGINS = [
-  /^http:\/\/localhost(:\d+)?$/,                              // any localhost port
-  /^https:\/\/giftedhandsventures\.vercel\.app$/,            // custom domain
-  /^https:\/\/rental-system-frontend[^.]*\.vercel\.app$/,    // ALL Vercel preview URLs
-  /^https:\/\/[^.]*angelaaa1ww-progs-projects\.vercel\.app$/, // team preview URLs
+  /^http:\/\/localhost(:\d+)?$/,
+  /^https:\/\/giftedhandsventures\.vercel\.app$/,
+  /^https:\/\/rental-system-frontend[^.]*\.vercel\.app$/,
+  /^https:\/\/[^.]*angelaaa1ww-progs-projects\.vercel\.app$/,
 ];
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow non-browser requests (curl, Postman, server-to-server)
     if (!origin) return callback(null, true);
+
     const allowed = ALLOWED_ORIGINS.some(pattern => pattern.test(origin));
     if (allowed) return callback(null, true);
+
     console.warn(`🚫 CORS blocked: ${origin}`);
     callback(new Error(`CORS: origin ${origin} not allowed`));
   },
@@ -33,21 +40,11 @@ app.use(cors({
 ========================= */
 app.use(express.json());
 
+/* =========================
+   ROUTES (CLEAN MOUNTING)
+========================= */
 app.use("/api/c2b", c2bRoutes);
 
-/* =========================
-   DATABASE
-========================= */
-connectDB();
-
-/* =========================
-   CRON JOB
-========================= */
-require('./cron/rentCron');
-
-/* =========================
-   ROUTES LOADER
-========================= */
 const loadRoute = (path, route) => {
   try {
     app.use(path, require(route));
@@ -57,17 +54,22 @@ const loadRoute = (path, route) => {
   }
 };
 
-loadRoute('/api/auth',      './routes/authRoutes');
-loadRoute('/api/tenants',   './routes/tenantRoutes');
-loadRoute('/api/houses',    './routes/houseRoutes');
-loadRoute('/api/payments',  './routes/paymentRoutes');
+loadRoute('/api/auth', './routes/authRoutes');
+loadRoute('/api/tenants', './routes/tenantRoutes');
+loadRoute('/api/houses', './routes/houseRoutes');
+loadRoute('/api/payments', './routes/paymentRoutes');
 loadRoute('/api/dashboard', './routes/dashboardRoutes');
 loadRoute('/api/reminders', './routes/reminderRoutes');
-loadRoute('/api/mpesa',     './routes/mpesaRoutes');
-loadRoute('/api/sms',       './routes/smsRoutes');
-loadRoute('/api/reports',   './routes/reportRoutes');
-loadRoute('/api/rent',      './routes/rentRoutes');
-app.use("/api/c2b", c2bRoutes);
+loadRoute('/api/mpesa', './routes/mpesaRoutes');
+loadRoute('/api/sms', './routes/smsRoutes');
+loadRoute('/api/reports', './routes/reportRoutes');
+loadRoute('/api/rent', './routes/rentRoutes');
+
+/* =========================
+   CRON JOB
+========================= */
+require('./cron/rentCron');
+
 /* =========================
    HEALTH CHECK
 ========================= */

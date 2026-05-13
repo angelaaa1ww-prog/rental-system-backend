@@ -3,7 +3,7 @@ const axios = require("axios");
 const router = express.Router();
 
 /* =========================
-   ACCESS TOKEN (INLINE)
+   ACCESS TOKEN
 ========================= */
 const generateToken = async () => {
     try {
@@ -51,7 +51,7 @@ router.get("/register", async (req, res) => {
         }
 
         const payload = {
-            ShortCode: "600000",
+            ShortCode: process.env.MPESA_SHORTCODE,
             ResponseType: "Completed",
             ConfirmationURL: `${ngrokUrl}/api/c2b/confirmation`,
             ValidationURL: `${ngrokUrl}/api/c2b/validation`
@@ -76,9 +76,8 @@ router.get("/register", async (req, res) => {
         res.json(response.data);
 
     } catch (error) {
-
         console.log("🔥 REGISTER ERROR:");
-        console.log(error.response?.data || error.message || error);
+        console.log(error.response?.data || error.message);
 
         res.status(500).json({
             error: error.response?.data || error.message || "Unknown error"
@@ -91,7 +90,7 @@ router.get("/register", async (req, res) => {
 ========================= */
 router.post("/validation", (req, res) => {
 
-    console.log("🔍 VALIDATION RECEIVED:");
+    console.log("🔥 VALIDATION HIT");
     console.log(req.body);
 
     return res.json({
@@ -105,7 +104,7 @@ router.post("/validation", (req, res) => {
 ========================= */
 router.post("/confirmation", (req, res) => {
 
-    console.log("💰 CONFIRMATION RECEIVED:");
+    console.log("🔥 CONFIRMATION HIT");
     console.log(JSON.stringify(req.body, null, 2));
 
     return res.json({
