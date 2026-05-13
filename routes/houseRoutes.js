@@ -75,10 +75,31 @@ router.get('/:id', auth, async (req, res) => {
 // =====================
 router.put('/:id', auth, async (req, res) => {
   try {
-    const { location, rent, bedrooms } = req.body;
+    const { houseNumber, location, rent, bedrooms, apartment } = req.body;
     const house = await House.findById(req.params.id);
     if (!house) return res.status(404).json({ message: 'House not found' });
 
+    if (houseNumber !== undefined) {
+      const nextHouseNumber = houseNumber.trim();
+      const nextApartment = apartment !== undefined ? apartment.trim() : house.apartment;
+      if (!nextHouseNumber) return res.status(400).json({ message: 'House number is required' });
+
+      const exists = await House.findOne({
+        _id: { $ne: house._id },
+        houseNumber: nextHouseNumber,
+        apartment: nextApartment
+      });
+      if (exists) {
+        return res.status(400).json({ message: `House ${nextHouseNumber} already exists in Apartment ${nextApartment}` });
+      }
+
+      house.houseNumber = nextHouseNumber;
+    }
+    if (apartment !== undefined) {
+      const apt = apartment.trim();
+      if (!["A", "B", "C", "D", "E"].includes(apt)) return res.status(400).json({ message: 'Apartment must be A-E' });
+      house.apartment = apt;
+    }
     if (location !== undefined) house.location = location.trim();
     if (rent     !== undefined) {
       const r = Number(rent);
