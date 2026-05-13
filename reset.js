@@ -20,7 +20,7 @@ async function reset() {
 
     await House.updateMany({}, {
       $set: {
-        status: "available",
+        status: "vacant",
         tenant: null
       }
     });

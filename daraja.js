@@ -53,7 +53,7 @@ const stkPush = async (phone, amount) => {
       PartyA: phone,
       PartyB: shortcode,
       PhoneNumber: phone,
-      CallBackURL: 'https://yourdomain.com/api/mpesa/callback',
+      CallBackURL: `${process.env.BACKEND_URL || 'https://rental-system-backend-1t05.onrender.com'}/api/c2b/confirm`,
       AccountReference: 'RENT',
       TransactionDesc: 'Rent Payment',
     },

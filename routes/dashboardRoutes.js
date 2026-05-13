@@ -6,9 +6,9 @@ const House   = require('../models/House');
 const Payment = require('../models/Payment');
 const auth    = require('../middleware/authMiddleware');
 
-// =====================
+// =============================================
 // DASHBOARD SUMMARY
-// =====================
+// =============================================
 router.get('/', auth, async (req, res) => {
   try {
     // ── House stats ──────────────────────────────────────
@@ -70,6 +70,61 @@ router.get('/', auth, async (req, res) => {
       }
     });
 
+    // ── Additional analytics for charts ─────────────────────────────────────
+    // 1. Monthly income for the last 6 months
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(now.getMonth() - 5);
+    sixMonthsAgo.setDate(1);
+    sixMonthsAgo.setHours(0,0,0,0);
+
+    const monthlyIncomeData = await Payment.aggregate([
+      { $match: { status: 'confirmed', createdAt: { $gte: sixMonthsAgo } } },
+      { 
+        $group: {
+          _id: {
+            year: { $year: '$createdAt' },
+            month: { $month: '$createdAt' }
+          },
+          total: { $sum: '$amount' }
+        }
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1 } }
+    ]);
+
+    const monthlyIncomeLabels = [];
+    const monthlyIncomeValues = [];
+    monthlyIncomeData.forEach(item => {
+      const monthName = new Date(item._id.year, item._id.month - 1).toLocaleString('default', { month: 'short' });
+      monthlyIncomeLabels.push(`${monthName} '${item._id.year.toString().slice(-2)}`);
+      monthlyIncomeValues.push(Math.round(item.total));
+    });
+
+    // 2. Payment method distribution for the last 3 months
+    const threeMonthsAgo = new Date();
+    threeMonthsAgo.setMonth(now.getMonth() - 2);
+    threeMonthsAgo.setDate(1);
+    threeMonthsAgo.setHours(0,0,0,0);
+
+    const paymentMethodData = await Payment.aggregate([
+      { $match: { status: 'confirmed', createdAt: { $gte: threeMonthsAgo } } },
+      { 
+        $group: {
+          _id: '$paymentMethod',
+          total: { $sum: '$amount' },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { total: -1 } }
+    ]);
+
+    const paymentMethodLabels = [];
+    const paymentMethodValues = [];
+    paymentMethodData.forEach(item => {
+      const method = item._id || 'unknown';
+      paymentMethodLabels.push(method.charAt(0).toUpperCase() + method.slice(1));
+      paymentMethodValues.push(Math.round(item.total));
+    });
+
     res.json({
       totalHouses,
       occupied,
@@ -79,7 +134,12 @@ router.get('/', auth, async (req, res) => {
       monthlyIncome,
       totalTenants: tenants.length,
       overdueCount: overdueTenants.length,
-      overdueTenants
+      overdueTenants,
+      // Chart data
+      monthlyIncomeLabels,
+      monthlyIncomeValues,
+      paymentMethodLabels,
+      paymentMethodValues
     });
 
   } catch (err) {

@@ -95,6 +95,44 @@ router.get('/balance/:tenantId', auth, async (req, res) => {
 });
 
 // =====================
+// GET ALL BALANCES (BULK)
+// =====================
+router.get('/balances', auth, async (req, res) => {
+  try {
+    const tenants = await Tenant.find({ active: true }).populate('house');
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const startDate = new Date(`${currentMonth}-01T00:00:00.000Z`);
+    const endDate = new Date(startDate);
+    endDate.setMonth(endDate.getMonth() + 1);
+
+    const payments = await Payment.find({
+      status: 'confirmed',
+      $or: [
+        { month: currentMonth },
+        { month: null, createdAt: { $gte: startDate, $lt: endDate } }
+      ]
+    });
+
+    const paymentMap = {};
+    payments.forEach(p => {
+      const id = String(p.tenant);
+      paymentMap[id] = (paymentMap[id] || 0) + (Number(p.amount) || 0);
+    });
+
+    const results = {};
+    tenants.forEach(t => {
+      const rent = t.house ? Number(t.house.rent) : 0;
+      const paid = paymentMap[String(t._id)] || 0;
+      results[t._id] = { rent, paid, balance: Math.max(0, rent - paid) };
+    });
+
+    return res.json(results);
+  } catch (err) {
+    return res.status(500).json({ message: 'Failed to compute bulk balances', error: err.message });
+  }
+});
+
+// =====================
 // DELETE PAYMENT
 // =====================
 router.delete('/:id', auth, async (req, res) => {

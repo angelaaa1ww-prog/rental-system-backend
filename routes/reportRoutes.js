@@ -64,7 +64,7 @@ router.get('/annual', auth, async (req, res) => {
     });
 
     return res.json({
-      year,
+      year: y,
       totalIncome:   payments.reduce((s, p) => s + (p.amount || 0), 0),
       totalPayments: payments.length,
       monthly
