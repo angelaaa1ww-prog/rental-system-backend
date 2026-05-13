@@ -10,7 +10,7 @@ const auth    = require('../middleware/authMiddleware');
 // =====================
 router.post('/', auth, async (req, res) => {
   try {
-    const { name, phone } = req.body;
+    const { name, phone, idNumber } = req.body;
 
     if (!name || !phone) {
       return res.status(400).json({ message: 'Name and phone are required' });
@@ -19,6 +19,7 @@ router.post('/', auth, async (req, res) => {
     const tenant = await Tenant.create({
       name:      name.trim(),
       phone:     phone.trim(),
+      idNumber:  idNumber ? idNumber.trim() : null,
       house:     null,
       active:    true
     });
@@ -63,12 +64,13 @@ router.get('/:id', auth, async (req, res) => {
 // =====================
 router.put('/:id', auth, async (req, res) => {
   try {
-    const { name, phone } = req.body;
+    const { name, phone, idNumber } = req.body;
     const tenant = await Tenant.findById(req.params.id);
     if (!tenant) return res.status(404).json({ message: 'Tenant not found' });
 
     if (name  !== undefined) tenant.name  = name.trim();
     if (phone !== undefined) tenant.phone = phone.trim();
+    if (idNumber !== undefined) tenant.idNumber = idNumber ? idNumber.trim() : null;
 
     await tenant.save();
     const updated = await Tenant.findById(tenant._id).populate('house');

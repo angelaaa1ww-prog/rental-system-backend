@@ -54,6 +54,36 @@ const tenantSchema = new mongoose.Schema(
     lastPaidMonth: {
       type: String,
       default: null // format: "2026-04"
+    },
+
+    // 🔐 NEW: Tenant portal authentication
+    portalUsername: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+      lowercase: true
+    },
+    portalPasswordHash: {
+      type: String
+    },
+    portalFailedAttempts: {
+      type: Number,
+      default: 0
+    },
+    portalLockedUntil: {
+      type: Date,
+      default: null
+    },
+    portalLastAttemptAt: {
+      type: Date,
+      default: null
+    },
+    portalResetToken: {
+      type: String
+    },
+    portalResetTokenExpires: {
+      type: Date
     }
 
   },

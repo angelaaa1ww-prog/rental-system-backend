@@ -65,6 +65,8 @@ loadRoute('/api/sms', './routes/smsRoutes');
 loadRoute('/api/reports', './routes/reportRoutes');
 loadRoute('/api/rent', './routes/rentRoutes');
 
+loadRoute('/api/tenant-auth', './routes/tenantAuthRoutes');
+
 /* =========================
    CRON JOB
 ========================= */
