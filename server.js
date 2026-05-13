@@ -69,6 +69,8 @@ loadRoute('/api/tenant-auth', './routes/tenantAuthRoutes');
 
 loadRoute('/api/maintenance', './routes/maintenanceRoutes');
 
+loadRoute('/api/expenses', './routes/expenseRoutes');
+
 /* =========================
    CRON JOB
 ========================= */
