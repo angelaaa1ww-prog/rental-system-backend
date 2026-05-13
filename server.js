@@ -64,6 +64,7 @@ loadRoute('/api/mpesa', './routes/mpesaRoutes');
 loadRoute('/api/sms', './routes/smsRoutes');
 loadRoute('/api/reports', './routes/reportRoutes');
 loadRoute('/api/rent', './routes/rentRoutes');
+loadRoute('/api/overdue', './routes/overdueRoutes');
 
 loadRoute('/api/tenant-auth', './routes/tenantAuthRoutes');
 

@@ -16,10 +16,16 @@ router.post('/', auth, async (req, res) => {
       return res.status(400).json({ message: 'Name and phone are required' });
     }
 
+    const cleanIdNumber = idNumber ? idNumber.trim() : null;
+    if (cleanIdNumber) {
+      const existing = await Tenant.findOne({ idNumber: cleanIdNumber });
+      if (existing) return res.status(400).json({ message: 'A tenant with that ID number already exists' });
+    }
+
     const tenant = await Tenant.create({
       name:      name.trim(),
       phone:     phone.trim(),
-      idNumber:  idNumber ? idNumber.trim() : null,
+      idNumber:  cleanIdNumber,
       house:     null,
       active:    true
     });
@@ -70,7 +76,14 @@ router.put('/:id', auth, async (req, res) => {
 
     if (name  !== undefined) tenant.name  = name.trim();
     if (phone !== undefined) tenant.phone = phone.trim();
-    if (idNumber !== undefined) tenant.idNumber = idNumber ? idNumber.trim() : null;
+    if (idNumber !== undefined) {
+      const cleanIdNumber = idNumber ? idNumber.trim() : null;
+      if (cleanIdNumber) {
+        const existing = await Tenant.findOne({ _id: { $ne: tenant._id }, idNumber: cleanIdNumber });
+        if (existing) return res.status(400).json({ message: 'A tenant with that ID number already exists' });
+      }
+      tenant.idNumber = cleanIdNumber;
+    }
 
     await tenant.save();
     const updated = await Tenant.findById(tenant._id).populate('house');
