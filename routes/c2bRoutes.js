@@ -1,116 +1,23 @@
 const express = require("express");
-const axios = require("axios");
+const auth = require("../middleware/authMiddleware");
+const {
+  validatePayment,
+  confirmPayment,
+  registerC2BUrls,
+  simulateC2BPayment,
+} = require("../controller/mpesaController");
+
 const router = express.Router();
 
-/* =========================
-   ACCESS TOKEN
-========================= */
-const generateToken = async () => {
-    try {
-        const auth = Buffer.from(
-            process.env.MPESA_CONSUMER_KEY +
-            ":" +
-            process.env.MPESA_CONSUMER_SECRET
-        ).toString("base64");
+// Public Daraja callbacks.
+router.post("/validation", validatePayment);
+router.post("/validate", validatePayment);
+router.post("/confirmation", confirmPayment);
+router.post("/confirm", confirmPayment);
 
-        const response = await axios.get(
-            "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials",
-            {
-                headers: {
-                    Authorization: `Basic ${auth}`
-                },
-                timeout: 15000
-            }
-        );
-
-        return response.data.access_token;
-
-    } catch (error) {
-        console.log("🔥 TOKEN ERROR:");
-        console.log(error.response?.data || error.message);
-        throw new Error("Failed to generate token");
-    }
-};
-
-/* =========================
-   REGISTER URLS
-========================= */
-router.get("/register", async (req, res) => {
-
-    try {
-        console.log("📡 C2B register triggered");
-
-        const token = await generateToken();
-
-        const ngrokUrl = process.env.NGROK_URL;
-
-        if (!ngrokUrl) {
-            return res.status(400).json({
-                error: "NGROK_URL missing in .env"
-            });
-        }
-
-        const payload = {
-            ShortCode: process.env.MPESA_SHORTCODE,
-            ResponseType: "Completed",
-            ConfirmationURL: `${ngrokUrl}/api/c2b/confirmation`,
-            ValidationURL: `${ngrokUrl}/api/c2b/validation`
-        };
-
-        console.log("📦 Payload:", payload);
-
-        const response = await axios.post(
-            "https://sandbox.safaricom.co.ke/mpesa/c2b/v1/registerurl",
-            payload,
-            {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    "Content-Type": "application/json"
-                },
-                timeout: 15000
-            }
-        );
-
-        console.log("✅ REGISTER SUCCESS:", response.data);
-
-        res.json(response.data);
-
-    } catch (error) {
-        console.log("🔥 REGISTER ERROR:");
-        console.log(error.response?.data || error.message);
-
-        res.status(500).json({
-            error: error.response?.data || error.message || "Unknown error"
-        });
-    }
-});
-
-/* =========================
-   VALIDATION URL
-========================= */
-router.post("/validation", (req, res) => {
-
-    console.log("🔥 VALIDATION HIT");
-    console.log(req.body);
-
-    return res.json({
-        ResultCode: 0,
-        ResultDesc: "Accepted"
-    });
-});
-
-/* =========================
-   CONFIRMATION URL
-========================= */
-router.post("/confirmation", (req, res) => {
-
-    console.log("🔥 CONFIRMATION HIT");
-    console.log(JSON.stringify(req.body, null, 2));
-
-    return res.json({
-        ResultCode: 0,
-        ResultDesc: "Received successfully"
-    });
-});
+// Admin-only Daraja setup/testing helpers.
+router.post("/register", auth, registerC2BUrls);
+router.get("/register", auth, registerC2BUrls);
+router.post("/simulate", auth, simulateC2BPayment);
 
 module.exports = router;

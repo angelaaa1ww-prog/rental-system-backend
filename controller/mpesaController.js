@@ -1,241 +1,530 @@
+const mongoose = require("mongoose");
 const Transaction = require("../models/Transaction");
 const Tenant = require("../models/Tenant");
 const Payment = require("../models/Payment");
 const House = require("../models/House");
-const daraja = require("../daraja.js");
+const mpesa = require("../utils/mpesa");
 
-// =============================================
-// VALIDATION URL (C2B)
-// =============================================
-exports.validatePayment = async (req, res) => {
-  console.log("M-PESA VALIDATION:");
-  console.log(req.body);
+const accepted = (res, desc = "Accepted") =>
+  res.json({ ResultCode: 0, ResultDesc: desc });
 
-  // In a real app, you might check if the MSISDN or BillRefNumber exists
-  res.json({
-    ResultCode: 0,
-    ResultDesc: "Accepted"
-  });
+const rejected = (res, code, desc) =>
+  res.json({ ResultCode: code, ResultDesc: desc });
+
+const currentMonth = () => new Date().toISOString().slice(0, 7);
+
+const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const compactRef = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/[\s_-]/g, "")
+    .toLowerCase();
+
+const phoneVariants = (phone) => {
+  const variants = new Set();
+  const raw = String(phone || "").trim();
+  if (!raw) return [];
+
+  variants.add(raw);
+  variants.add(raw.replace(/[^\d+]/g, ""));
+
+  try {
+    const normalized = mpesa.normalizePhone(raw);
+    variants.add(normalized);
+    variants.add(`+${normalized}`);
+    variants.add(`0${normalized.slice(3)}`);
+  } catch {
+    // Keep raw variants only when Safaricom sends an unexpected value.
+  }
+
+  return [...variants].filter(Boolean);
 };
 
-// =============================================
-// CONFIRMATION URL (C2B)
-// =============================================
-exports.confirmPayment = async (req, res) => {
-  try {
-    console.log("M-PESA CONFIRMATION:");
-    console.log(req.body);
+const findTenantForPayment = async ({ billRefNumber, msisdn }) => {
+  const ref = String(billRefNumber || "").trim();
 
-    const {
-      TransID,
-      TransAmount,
-      MSISDN,
-      BillRefNumber,
-      FirstName,
-      LastName
-    } = req.body;
+  if (ref) {
+    if (mongoose.Types.ObjectId.isValid(ref)) {
+      const tenantById = await Tenant.findOne({ _id: ref, active: true }).populate("house");
+      if (tenantById) return { tenant: tenantById, matchType: "tenant_id" };
+    }
 
-    // 1. Save the raw transaction
-    const transaction = new Transaction({
-      transactionType: req.body.TransactionType,
-      transID: TransID,
-      transTime: req.body.TransTime,
-      transAmount: Number(TransAmount),
-      businessShortCode: req.body.BusinessShortCode,
-      billRefNumber: BillRefNumber,
-      msisdn: MSISDN,
-      firstName: FirstName,
-      lastName: LastName
+    const tenantByIdNumber = await Tenant.findOne({
+      active: true,
+      idNumber: new RegExp(`^${escapeRegex(ref)}$`, "i"),
+    }).populate("house");
+    if (tenantByIdNumber) return { tenant: tenantByIdNumber, matchType: "tenant_id_number" };
+
+    const exactHouses = await House.find({
+      houseNumber: new RegExp(`^${escapeRegex(ref)}$`, "i"),
     });
+    const occupiedExactHouses = exactHouses.filter((house) => house.status === "occupied");
+    if (occupiedExactHouses.length === 1) {
+      const houseByNumber = occupiedExactHouses[0];
+      const tenantByHouse = await Tenant.findOne({
+        active: true,
+        house: houseByNumber._id,
+      }).populate("house");
+      if (tenantByHouse) return { tenant: tenantByHouse, matchType: "house_number" };
+    }
+
+    const normalizedRef = compactRef(ref);
+    const occupiedHouses = await House.find({ status: "occupied" }).limit(1000);
+    const matchedHouse = occupiedHouses.find((house) => {
+      const options = [
+        house.houseNumber,
+        `${house.apartment}${house.houseNumber}`,
+        `${house.houseNumber}${house.apartment}`,
+      ].map(compactRef);
+      return options.includes(normalizedRef);
+    });
+
+    if (matchedHouse) {
+      const tenantByHouse = await Tenant.findOne({
+        active: true,
+        house: matchedHouse._id,
+      }).populate("house");
+      if (tenantByHouse) return { tenant: tenantByHouse, matchType: "apartment_house_number" };
+    }
+  }
+
+  const variants = phoneVariants(msisdn);
+  if (variants.length) {
+    const tenantByPhone = await Tenant.findOne({
+      active: true,
+      phone: { $in: variants },
+    }).populate("house");
+    if (tenantByPhone) return { tenant: tenantByPhone, matchType: "phone" };
+
+    const tenants = await Tenant.find({ active: true }).populate("house");
+    const tenantByNormalizedPhone = tenants.find((tenant) =>
+      phoneVariants(tenant.phone).some((variant) => variants.includes(variant))
+    );
+    if (tenantByNormalizedPhone) {
+      return { tenant: tenantByNormalizedPhone, matchType: "normalized_phone" };
+    }
+  }
+
+  return { tenant: null, matchType: null };
+};
+
+const upsertTransaction = async (body, overrides = {}) => {
+  const transID = overrides.transID || body.TransID || body.MpesaReceiptNumber;
+  if (!transID) return null;
+
+  const data = {
+    transactionType: overrides.transactionType || body.TransactionType,
+    transID,
+    transTime: overrides.transTime || body.TransTime,
+    transAmount: Number(overrides.transAmount ?? body.TransAmount) || 0,
+    businessShortCode: body.BusinessShortCode,
+    billRefNumber: body.BillRefNumber,
+    invoiceNumber: body.InvoiceNumber,
+    orgAccountBalance: body.OrgAccountBalance,
+    thirdPartyTransID: body.ThirdPartyTransID,
+    msisdn: String(overrides.msisdn || body.MSISDN || ""),
+    firstName: body.FirstName,
+    middleName: body.MiddleName,
+    lastName: body.LastName,
+    raw: body,
+  };
+
+  let transaction = await Transaction.findOne({ transID });
+  if (transaction) {
+    Object.assign(transaction, data);
+  } else {
+    transaction = new Transaction(data);
+  }
+
+  await transaction.save();
+  return transaction;
+};
+
+const linkConfirmedPayment = async ({ body, tenant, matchType, transaction }) => {
+  const transID = body.TransID;
+  const amount = Number(body.TransAmount);
+  const msisdn = String(body.MSISDN || "");
+  const billRefNumber = String(body.BillRefNumber || "").trim() || null;
+
+  const existingPayment = await Payment.findOne({
+    $or: [{ reference: transID }, { mpesaReceipt: transID }],
+  });
+
+  if (existingPayment) {
+    if (transaction) {
+      transaction.payment = existingPayment._id;
+      transaction.tenant = existingPayment.tenant;
+      transaction.status = "duplicate";
+      transaction.matchType = matchType || transaction.matchType;
+      await transaction.save();
+    }
+    return { payment: existingPayment, duplicate: true };
+  }
+
+  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+  let payment = await Payment.findOne({
+    tenant: tenant._id,
+    amount,
+    status: "pending",
+    paymentMethod: "mpesa",
+    createdAt: { $gte: tenMinutesAgo },
+  }).sort({ createdAt: -1 });
+
+  if (payment) {
+    payment.status = "confirmed";
+    payment.mpesaReceipt = transID;
+    payment.mpesaPhone = msisdn || null;
+    payment.billRefNumber = billRefNumber;
+    payment.mpesaRawCallback = body;
+    payment.note = `M-Pesa payment confirmed. Receipt: ${transID}`;
+  } else {
+    payment = await Payment.create({
+      tenant: tenant._id,
+      amount,
+      reference: transID,
+      status: "confirmed",
+      month: currentMonth(),
+      paymentMethod: "mpesa",
+      mpesaReceipt: transID,
+      mpesaPhone: msisdn || null,
+      billRefNumber,
+      mpesaRawCallback: body,
+      note: `C2B PayBill payment via M-Pesa. Account: ${billRefNumber || "none"}`,
+    });
+  }
+
+  if (!payment.month) payment.month = currentMonth();
+  await payment.save();
+
+  if (transaction) {
+    transaction.payment = payment._id;
+    transaction.tenant = tenant._id;
+    transaction.status = "linked";
+    transaction.matchType = matchType;
     await transaction.save();
+  }
 
-    // 2. Try to find the tenant
-    // Priority 1: Exact match on BillRefNumber (House Number)
-    // Priority 2: Match on Phone Number (MSISDN)
-    let tenant = await Tenant.findOne({ active: true }).populate('house');
-    
-    // Search by house number (BillRefNumber)
-    const houseMatch = await House.findOne({ houseNumber: new RegExp(`^${BillRefNumber}$`, 'i') });
-    if (houseMatch) {
-      tenant = await Tenant.findOne({ house: houseMatch._id, active: true }).populate('house');
+  return { payment, duplicate: false };
+};
+
+const extractStkMetadata = (callback) => {
+  const items = callback?.CallbackMetadata?.Item || [];
+  return items.reduce((acc, item) => {
+    acc[item.Name] = item.Value;
+    return acc;
+  }, {});
+};
+
+exports.validatePayment = async (req, res) => {
+  try {
+    const amount = Number(req.body.TransAmount);
+    if (!amount || amount <= 0) {
+      return rejected(res, "C2B00013", "Invalid amount");
     }
 
-    // If no house match, try phone number
-    if (!tenant) {
-      const cleanPhone = MSISDN.replace('254', '0'); // convert 254... to 0...
-      tenant = await Tenant.findOne({ 
-        $or: [{ phone: MSISDN }, { phone: cleanPhone }],
-        active: true 
-      }).populate('house');
-    }
+    const strictValidation =
+      String(process.env.MPESA_C2B_STRICT_VALIDATION || "").toLowerCase() === "true";
 
-    if (tenant) {
-      console.log(`✅ Linking payment ${TransID} to tenant ${tenant.name}`);
-
-      // 3. Create a Payment record (for confirmed payments via C2B)
-      await Payment.create({
-        tenant: tenant._id,
-        amount: Number(TransAmount),
-        reference: TransID,
-        status: 'confirmed',
-        month: new Date().toISOString().slice(0, 7),
-        paymentMethod: 'mpesa',
-        note: `C2B Payment via M-Pesa. Ref: ${BillRefNumber}`
+    if (strictValidation) {
+      const { tenant } = await findTenantForPayment({
+        billRefNumber: req.body.BillRefNumber,
+        msisdn: req.body.MSISDN,
       });
 
-      // 4. Also update any pending STK push payment that matches this tenant, amount, and recent time
-      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-      const pendingPayment = await Payment.findOne({
-        tenant: tenant._id,
-        amount: Number(TransAmount),
-        status: 'pending',
-        paymentMethod: 'mpesa',
-        createdAt: { $gte: tenMinutesAgo }
-      }).sort({ createdAt: -1 }); // get the most recent pending
-
-      if (pendingPayment) {
-        pendingPayment.status = 'confirmed';
-        pendingPayment.mpesaReceipt = TransID;
-        pendingPayment.note = `STK push confirmed. M-Pesa Receipt: ${TransID}`;
-        await pendingPayment.save();
-        console.log(`🔄 Updated pending payment ${pendingPayment._id} to confirmed`);
+      if (!tenant) {
+        return rejected(res, "C2B00012", "Invalid account number");
       }
-
-    } else {
-      console.warn(`⚠️ Could not find tenant for payment ${TransID} (Phone: ${MSISDN}, Ref: ${BillRefNumber})`);
     }
 
-    res.json({
-      ResultCode: 0,
-      ResultDesc: "Received Successfully"
+    return accepted(res, "Accepted");
+  } catch (error) {
+    console.error("M-Pesa validation error:", error);
+    return rejected(res, "C2B00016", "Unable to validate transaction");
+  }
+};
+
+exports.confirmPayment = async (req, res) => {
+  try {
+    const body = req.body || {};
+
+    if (!body.TransID) {
+      return accepted(res, "Ignored callback without transaction id");
+    }
+    if (!Number(body.TransAmount) || Number(body.TransAmount) <= 0) {
+      return accepted(res, "Ignored callback with invalid amount");
+    }
+
+    const transaction = await upsertTransaction(body);
+    const { tenant, matchType } = await findTenantForPayment({
+      billRefNumber: body.BillRefNumber,
+      msisdn: body.MSISDN,
     });
 
+    if (!tenant) {
+      if (transaction) {
+        transaction.status = "unmatched";
+        transaction.matchType = null;
+        await transaction.save();
+      }
+      return accepted(res, "Received. Payment is unmatched.");
+    }
+
+    await linkConfirmedPayment({ body, tenant, matchType, transaction });
+    return accepted(res, "Received Successfully");
   } catch (error) {
-    console.error("🔥 M-PESA Confirmation Error:", error);
-    res.status(500).json({
-      message: "Error processing transaction",
-      error: error.message
+    console.error("M-Pesa confirmation error:", error);
+    return res.status(500).json({
+      ResultCode: 1,
+      ResultDesc: "Error processing transaction",
     });
   }
 };
 
-// =============================================
-// INITIATE STK PUSH
-// POST /api/mpesa/pay
-// =============================================
+exports.registerC2BUrls = async (req, res) => {
+  try {
+    const result = await mpesa.registerC2BUrls();
+    return res.json({
+      message: "C2B callback URLs registered with Daraja",
+      ...result,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Failed to register C2B callback URLs",
+      error: error.response?.data || error.message,
+    });
+  }
+};
+
+exports.simulateC2BPayment = async (req, res) => {
+  try {
+    const { amount, phone, billRefNumber, commandId } = req.body;
+    const result = await mpesa.simulateC2BPayment({
+      amount,
+      phone: phone || process.env.MPESA_TEST_MSISDN || "254708374149",
+      billRefNumber,
+      commandId,
+    });
+
+    return res.json({
+      message: "C2B sandbox simulation sent",
+      ...result,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Failed to simulate C2B payment",
+      error: error.response?.data || error.message,
+    });
+  }
+};
+
 exports.initiateStkPush = async (req, res) => {
   try {
     const { tenantId, amount } = req.body;
 
     if (!tenantId) {
-      return res.status(400).json({ message: 'Tenant ID is required' });
+      return res.status(400).json({ message: "Tenant ID is required" });
     }
 
-    // Find tenant
-    const tenant = await Tenant.findById(tenantId).populate('house');
+    const tenant = await Tenant.findById(tenantId).populate("house");
     if (!tenant) {
-      return res.status(404).json({ message: 'Tenant not found' });
+      return res.status(404).json({ message: "Tenant not found" });
     }
     if (!tenant.phone) {
-      return res.status(400).json({ message: 'Tenant has no phone number' });
+      return res.status(400).json({ message: "Tenant has no phone number" });
     }
 
-    // Determine amount to charge
-    let chargeAmount;
-    if (amount && !isNaN(amount) && Number(amount) > 0) {
-      chargeAmount = Number(amount);
-    } else {
-      // Use house rent if available
+    let chargeAmount = Number(amount);
+    if (!chargeAmount || chargeAmount <= 0) {
       if (!tenant.house || !tenant.house.rent) {
-        return res.status(400).json({ message: 'Tenant has no house assigned or house rent not set' });
+        return res.status(400).json({
+          message: "Tenant has no house assigned or house rent is not set",
+        });
       }
       chargeAmount = Number(tenant.house.rent);
     }
 
-    // Format phone number to +254XXXXXXXXX
-    let phone = tenant.phone.trim();
-    if (phone.startsWith('0')) {
-      phone = '+254' + phone.substring(1);
-    } else if (phone.startsWith('254')) {
-      phone = '+' + phone;
-    } else if (!phone.startsWith('+254')) {
-      phone = '+254' + phone;
-    }
-
-    // Initiate STK push via Daraja
-    const result = await daraja.stkPush(phone, chargeAmount);
+    const result = await mpesa.stkPush({
+      phone: tenant.phone,
+      amount: chargeAmount,
+      accountRef: tenant.house?.houseNumber || tenant._id,
+      description: "Rent Payment",
+    });
 
     if (!result || !result.CheckoutRequestID) {
-      console.error('Daraja STK push failed:', result);
-      return res.status(500).json({ message: 'Failed to initiate M-Pesa payment' });
+      return res.status(500).json({
+        message: "Failed to initiate M-Pesa payment",
+        details: result,
+      });
     }
 
     const checkoutRequestID = result.CheckoutRequestID;
-
-    // Create pending payment record
-    const pendingPayment = await Payment.create({
+    await Payment.create({
       tenant: tenant._id,
       amount: chargeAmount,
       reference: checkoutRequestID,
-      status: 'pending',
-      paymentMethod: 'mpesa',
-      month: new Date().toISOString().slice(0, 7),
-      note: `STK push initiated. CheckoutRequestID: ${checkoutRequestID}`
+      checkoutRequestID,
+      status: "pending",
+      paymentMethod: "mpesa",
+      month: currentMonth(),
+      billRefNumber: tenant.house?.houseNumber || null,
+      note: `STK push initiated. CheckoutRequestID: ${checkoutRequestID}`,
+      mpesaRawCallback: result,
     });
 
-    console.log(`📱 STK push initiated for tenant ${tenant.name}, CheckoutRequestID: ${checkoutRequestID}`);
-
-    res.json({
+    return res.json({
       success: true,
       checkoutRequestID,
-      message: 'M-Pesa prompt sent to tenant\'s phone'
+      checkoutRequestId: checkoutRequestID,
+      message: "M-Pesa prompt sent to tenant's phone",
     });
-
   } catch (error) {
-    console.error('🔥 M-PESA Initiate STK Push Error:', error);
-    res.status(500).json({ message: 'Internal server error', error: error.message });
+    console.error("M-Pesa STK push error:", error.response?.data || error.message);
+    return res.status(500).json({
+      message: "Failed to initiate M-Pesa payment",
+      error: error.response?.data || error.message,
+    });
   }
 };
 
-// =============================================
-// CHECK STK PUSH STATUS
-// GET /api/mpesa/status/:checkoutRequestID
-// =============================================
+exports.handleStkCallback = async (req, res) => {
+  try {
+    const callback = req.body?.Body?.stkCallback || req.body?.stkCallback || req.body || {};
+    const checkoutRequestID = callback.CheckoutRequestID;
+
+    if (!checkoutRequestID) {
+      return accepted(res, "Ignored callback without CheckoutRequestID");
+    }
+
+    const resultCode = Number(callback.ResultCode);
+    const metadata = extractStkMetadata(callback);
+    const receipt = metadata.MpesaReceiptNumber;
+    const amount = Number(metadata.Amount) || 0;
+    const phone = metadata.PhoneNumber ? String(metadata.PhoneNumber) : "";
+
+    let payment = await Payment.findOne({
+      $or: [{ reference: checkoutRequestID }, { checkoutRequestID }],
+    });
+
+    if (resultCode !== 0) {
+      if (payment) {
+        payment.status = "failed";
+        payment.note = callback.ResultDesc || "STK push failed or was cancelled";
+        payment.mpesaRawCallback = req.body;
+        await payment.save();
+      }
+      return accepted(res, "STK callback received");
+    }
+
+    if (receipt) {
+      const duplicate = await Payment.findOne({ mpesaReceipt: receipt });
+      if (duplicate && (!payment || String(duplicate._id) !== String(payment._id))) {
+        return accepted(res, "Duplicate STK callback received");
+      }
+    }
+
+    let tenant = payment ? await Tenant.findById(payment.tenant).populate("house") : null;
+    if (!tenant) {
+      const match = await findTenantForPayment({ msisdn: phone });
+      tenant = match.tenant;
+    }
+
+    if (!payment && tenant) {
+      payment = await Payment.create({
+        tenant: tenant._id,
+        amount,
+        reference: checkoutRequestID,
+        checkoutRequestID,
+        status: "pending",
+        paymentMethod: "mpesa",
+        month: currentMonth(),
+      });
+    }
+
+    if (payment) {
+      payment.status = "confirmed";
+      payment.amount = amount || payment.amount;
+      payment.mpesaReceipt = receipt || payment.mpesaReceipt;
+      payment.mpesaPhone = phone || payment.mpesaPhone;
+      payment.mpesaRawCallback = req.body;
+      payment.note = `STK push confirmed. M-Pesa receipt: ${receipt || "unknown"}`;
+      if (!payment.month) payment.month = currentMonth();
+      await payment.save();
+    }
+
+    const transaction = await upsertTransaction(
+      {
+        TransID: receipt || checkoutRequestID,
+        TransAmount: amount,
+        MSISDN: phone,
+        BillRefNumber: payment?.billRefNumber,
+      },
+      {
+        transactionType: "STK_PUSH",
+        transID: receipt || checkoutRequestID,
+        transAmount: amount,
+        msisdn: phone,
+      }
+    );
+
+    if (transaction) {
+      transaction.payment = payment?._id || null;
+      transaction.tenant = tenant?._id || payment?.tenant || null;
+      transaction.status = payment ? "linked" : "unmatched";
+      transaction.matchType = payment ? "checkout_request" : null;
+      await transaction.save();
+    }
+
+    return accepted(res, "STK callback received");
+  } catch (error) {
+    console.error("M-Pesa STK callback error:", error);
+    return res.status(500).json({
+      ResultCode: 1,
+      ResultDesc: "Error processing STK callback",
+    });
+  }
+};
+
 exports.checkStkStatus = async (req, res) => {
   try {
     const { checkoutRequestID } = req.params;
 
     if (!checkoutRequestID) {
-      return res.status(400).json({ message: 'CheckoutRequestID is required' });
+      return res.status(400).json({ message: "CheckoutRequestID is required" });
     }
 
-    // Find payment by reference
-    const payment = await Payment.findOne({ reference: checkoutRequestID })
-      .populate('tenant')
-      .populate('house');
+    const payment = await Payment.findOne({
+      $or: [{ reference: checkoutRequestID }, { checkoutRequestID }],
+    }).populate({
+      path: "tenant",
+      populate: { path: "house" },
+    });
 
     if (!payment) {
-      return res.status(404).json({ message: 'Payment request not found' });
+      return res.status(404).json({ message: "Payment request not found" });
     }
 
-    // Return current status
-    res.json({
+    return res.json({
       status: payment.status,
       amount: payment.amount,
-      tenant: payment.tenant ? {
-        name: payment.tenant.name,
-        phone: payment.tenant.phone
-      } : null,
-      house: payment.house ? payment.house.houseNumber : null,
+      tenant: payment.tenant
+        ? {
+            name: payment.tenant.name,
+            phone: payment.tenant.phone,
+          }
+        : null,
+      house: payment.tenant?.house?.houseNumber || null,
       mpesaReceipt: payment.mpesaReceipt,
       note: payment.note,
       createdAt: payment.createdAt,
-      updatedAt: payment.updatedAt
+      updatedAt: payment.updatedAt,
     });
-
   } catch (error) {
-    console.error('🔥 M-PESA Check Status Error:', error);
-    res.status(500).json({ message: 'Internal server error', error: error.message });
+    console.error("M-Pesa status error:", error);
+    return res.status(500).json({
+      message: "Failed to check M-Pesa payment status",
+      error: error.message,
+    });
   }
 };
 

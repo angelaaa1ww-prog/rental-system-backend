@@ -196,13 +196,36 @@ AT_API_KEY=your_api_key
 MPESA_ENV=sandbox
 MPESA_CONSUMER_KEY=your_consumer_key
 MPESA_CONSUMER_SECRET=your_consumer_secret
-MPESA_SHORTCODE=174379
+MPESA_SHORTCODE=your_paybill_or_sandbox_shortcode
 MPESA_PASSKEY=your_passkey
-MPESA_CALLBACK_URL=https://your-backend.onrender.com/api/mpesa/callback
+MPESA_CALLBACK_BASE_URL=https://your-backend.onrender.com
+MPESA_C2B_RESPONSE_TYPE=Completed
+MPESA_C2B_STRICT_VALIDATION=false
+MPESA_TEST_MSISDN=254708374149
 
 # Security
 OWNER_PHONE=+254XXXXXXXXX
 CLIENT_URL=https://your-frontend.vercel.app
+```
+
+### M-Pesa C2B setup
+
+1. Set the Daraja values above in `backend/.env`. For production, `MPESA_SHORTCODE` is your real PayBill and `MPESA_ENV=production`.
+2. Ensure `MPESA_CALLBACK_BASE_URL` is a public HTTPS URL that points to this backend.
+3. Register callback URLs while logged in as admin, using the admin bearer token:
+   `POST /api/c2b/register`
+4. Safaricom will call:
+   `POST /api/c2b/validation`
+   `POST /api/c2b/confirmation`
+5. Tenants should use their house number, apartment+house number, tenant id, or ID number as the PayBill account reference so the callback can be linked automatically.
+
+For sandbox testing, call `POST /api/c2b/simulate` with:
+```json
+{
+  "amount": 100,
+  "phone": "254708374149",
+  "billRefNumber": "A101"
+}
 ```
 
 ---

@@ -58,6 +58,30 @@ const paymentSchema = new mongoose.Schema(
       default: null,
     },
 
+    // Customer phone reported by Safaricom, usually in 2547XXXXXXXX format
+    mpesaPhone: {
+      type:    String,
+      default: null,
+    },
+
+    // PayBill account number/reference entered by the tenant
+    billRefNumber: {
+      type:    String,
+      default: null,
+    },
+
+    // Daraja checkout request id for STK push payments
+    checkoutRequestID: {
+      type:    String,
+      default: null,
+    },
+
+    // Raw Daraja callback for audit/debugging
+    mpesaRawCallback: {
+      type:    mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+
     // Optional note from admin e.g. "Partial payment", "Arrears"
     note: {
       type:    String,
@@ -66,5 +90,10 @@ const paymentSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+paymentSchema.index({ reference: 1 });
+paymentSchema.index({ mpesaReceipt: 1 });
+paymentSchema.index({ billRefNumber: 1 });
+paymentSchema.index({ checkoutRequestID: 1 });
 
 module.exports = mongoose.model("Payment", paymentSchema);
