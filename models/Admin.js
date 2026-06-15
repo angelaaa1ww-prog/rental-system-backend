@@ -23,7 +23,22 @@ const adminSchema = new mongoose.Schema({
   lastAttemptAt: {
     type: Date,
     default: null
-  }
+  },
+  // 2FA fields
+  twoFactorSecret: { type: String, default: null },
+  twoFactorEnabled: { type: Boolean, default: false },
+  // Known devices for new-device detection
+  knownDevices: [{
+    fingerprint: String,
+    browser: String,
+    device: String,
+    ip: String,
+    lastUsed: { type: Date, default: Date.now }
+  }],
+  // Email for login alerts
+  alertEmail: { type: String, default: null },
+  // Google OAuth ID
+  googleId: { type: String, default: null }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Admin', adminSchema);

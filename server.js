@@ -72,6 +72,9 @@ loadRoute('/api/maintenance', './routes/maintenanceRoutes');
 
 loadRoute('/api/expenses', './routes/expenseRoutes');
 
+loadRoute('/api/2fa', './routes/twoFactorRoutes');
+loadRoute('/api/google-auth', './routes/googleAuth');
+
 /* =========================
    CRON JOB
 ========================= */

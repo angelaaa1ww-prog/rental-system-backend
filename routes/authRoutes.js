@@ -5,7 +5,9 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const Admin = require('../models/Admin');
 const sendSMS = require('../utils/sms');
-
+const speakeasy = require('speakeasy');
+const crypto = require('crypto');
+const { sendLoginAlert } = require('../utils/email');
 // =============================================
 // CONFIG
 // =============================================
@@ -50,6 +52,17 @@ const getDeviceInfo = (req) => {
   });
 
   return { browser, device, ip, time, date };
+};
+
+// =============================================
+// HELPER: GET DEVICE FINGERPRINT
+// =============================================
+const getDeviceFingerprint = (req) => {
+  const ua = req.headers['user-agent'] || '';
+  const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
+  // Use IP subnet (first 3 octets) + UA for fingerprint
+  const ipSubnet = ip.split('.').slice(0, 3).join('.');
+  return crypto.createHash('sha256').update(`${ipSubnet}|${ua}`).digest('hex').substring(0, 16);
 };
 
 // =============================================
@@ -159,11 +172,51 @@ router.post('/login', async (req, res) => {
     }
 
     // SUCCESS
+    // Check if 2FA is enabled
+    if (admin.twoFactorEnabled) {
+      const tempToken = jwt.sign(
+        { email: admin.email, role: 'admin', pending2FA: true },
+        JWT_SECRET,
+        { expiresIn: '5m' }
+      );
+      return res.json({
+        requires2FA: true,
+        tempToken,
+        message: 'Please enter your 2FA code'
+      });
+    }
+
     // Reset failed attempts
     admin.failedAttempts = 0;
     admin.lockedUntil = null;
     admin.lastAttemptAt = new Date();
-    await admin.save();
+
+    // ── New device detection ──
+    const fingerprint = getDeviceFingerprint(req);
+    const { browser, device, ip, time, date } = getDeviceInfo(req);
+    const isKnown = (admin.knownDevices || []).some(d => d.fingerprint === fingerprint);
+    
+    if (!isKnown) {
+      // Add to known devices
+      if (!admin.knownDevices) admin.knownDevices = [];
+      admin.knownDevices.push({ fingerprint, browser, device, ip, lastUsed: new Date() });
+      // Keep only last 10 devices
+      if (admin.knownDevices.length > 10) admin.knownDevices = admin.knownDevices.slice(-10);
+      await admin.save();
+      
+      // Send email alert
+      const alertTo = admin.alertEmail || admin.email;
+      try {
+        await sendLoginAlert(alertTo, { browser, device, ip, time, date });
+      } catch (_) {
+        console.log('Email alert failed — login still succeeded');
+      }
+    } else {
+      // Update lastUsed for known device
+      const dev = admin.knownDevices.find(d => d.fingerprint === fingerprint);
+      if (dev) dev.lastUsed = new Date();
+      await admin.save();
+    }
 
     // Generate JWT token
     const token = jwt.sign(
@@ -192,6 +245,91 @@ router.post('/login', async (req, res) => {
   } catch (err) {
     console.error('Login error:', err.message);
     return res.status(500).json({ message: 'Login failed', error: err.message });
+  }
+});
+
+// =============================================
+// VERIFY 2FA DURING LOGIN
+// POST /api/auth/verify-2fa
+// =============================================
+router.post('/verify-2fa', async (req, res) => {
+  try {
+    const { tempToken, totpCode } = req.body;
+    if (!tempToken || !totpCode) {
+      return res.status(400).json({ message: 'Token and 2FA code are required' });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(tempToken, JWT_SECRET);
+    } catch (err) {
+      return res.status(401).json({ message: '2FA session expired. Please login again.' });
+    }
+
+    if (!decoded.pending2FA) {
+      return res.status(400).json({ message: 'Invalid 2FA session' });
+    }
+
+    const admin = await Admin.findOne({ email: decoded.email });
+    if (!admin) return res.status(404).json({ message: 'Admin not found' });
+
+    const verified = speakeasy.totp.verify({
+      secret: admin.twoFactorSecret,
+      encoding: 'base32',
+      token: totpCode,
+      window: 2
+    });
+
+    if (!verified) {
+      return res.status(401).json({ message: 'Invalid 2FA code. Try again.' });
+    }
+
+    // New device detection for 2FA login
+    const fingerprint = getDeviceFingerprint(req);
+    const { browser, device, ip, time, date } = getDeviceInfo(req);
+    const isKnown = (admin.knownDevices || []).some(d => d.fingerprint === fingerprint);
+    
+    if (!isKnown) {
+      if (!admin.knownDevices) admin.knownDevices = [];
+      admin.knownDevices.push({ fingerprint, browser, device, ip, lastUsed: new Date() });
+      if (admin.knownDevices.length > 10) admin.knownDevices = admin.knownDevices.slice(-10);
+      await admin.save();
+      const alertTo = admin.alertEmail || admin.email;
+      try { await sendLoginAlert(alertTo, { browser, device, ip, time, date }); } catch (_) {}
+    } else {
+      const dev = admin.knownDevices.find(d => d.fingerprint === fingerprint);
+      if (dev) dev.lastUsed = new Date();
+      await admin.save();
+    }
+
+    // Reset failed attempts
+    admin.failedAttempts = 0;
+    admin.lockedUntil = null;
+    admin.lastAttemptAt = new Date();
+    await admin.save();
+
+    const token = jwt.sign(
+      { email: admin.email, role: 'admin' },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRY }
+    );
+
+    // Send login alert
+    try {
+      await sendSMS(
+        OWNER_PHONE,
+        `✅ GHV Login: Admin logged in (2FA verified). Device: ${device}/${browser}. IP: ${ip}. Time: ${time}, ${date}.`
+      );
+    } catch (_) {}
+
+    return res.json({
+      message: 'Login successful',
+      token,
+      expiresIn: JWT_EXPIRY,
+    });
+  } catch (err) {
+    console.error('2FA verify error:', err.message);
+    return res.status(500).json({ message: '2FA verification failed', error: err.message });
   }
 });
 

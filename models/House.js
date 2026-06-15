@@ -33,6 +33,17 @@ const houseSchema = new mongoose.Schema(
       min: 1   // 🔥 prevents 0 or negative rent
     },
 
+    rentalType: {
+      type: String,
+      enum: ["monthly", "airbnb"],
+      default: "monthly"
+    },
+    
+    nightlyRate: {
+      type: Number,
+      default: null
+    },
+
     status: {
       type: String,
       enum: ["vacant", "occupied"],

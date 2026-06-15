@@ -9,7 +9,7 @@ const auth    = require('../middleware/authMiddleware');
 // =====================
 router.post('/', auth, async (req, res) => {
   try {
-    let { houseNumber, location, rent, apartment, bedrooms } = req.body;
+    let { houseNumber, location, rent, apartment, bedrooms, rentalType, nightlyRate } = req.body;
 
     rent     = Number(rent);
     bedrooms = Number(bedrooms);
@@ -35,6 +35,8 @@ router.post('/', auth, async (req, res) => {
       rent,
       apartment:   apartment.trim(),
       bedrooms,
+      rentalType:  rentalType || 'monthly',
+      nightlyRate: nightlyRate || null,
       status:      'vacant',
       tenant:      null
     });
@@ -75,7 +77,7 @@ router.get('/:id', auth, async (req, res) => {
 // =====================
 router.put('/:id', auth, async (req, res) => {
   try {
-    const { houseNumber, location, rent, bedrooms, apartment } = req.body;
+    const { houseNumber, location, rent, bedrooms, apartment, rentalType, nightlyRate } = req.body;
     const house = await House.findById(req.params.id);
     if (!house) return res.status(404).json({ message: 'House not found' });
 
@@ -108,6 +110,8 @@ router.put('/:id', auth, async (req, res) => {
       if (![1,2,3,4].includes(b)) return res.status(400).json({ message: 'Bedrooms must be 1–4' });
       house.bedrooms = b;
     }
+    if (rentalType !== undefined) house.rentalType = rentalType;
+    if (nightlyRate !== undefined) house.nightlyRate = nightlyRate;
 
     await house.save();
     return res.json({ message: 'House updated', house });
