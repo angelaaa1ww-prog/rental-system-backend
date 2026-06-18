@@ -72,8 +72,8 @@ const ensureDefaultAdmin = async () => {
   try {
     const adminCount = await Admin.countDocuments();
     if (adminCount === 0) {
-      const adminEmail = process.env.ADMIN_EMAIL || 'admin@rentals.co.ke';
-      const adminPassword = process.env.ADMIN_PASSWORD || 'admin1234';
+      const adminEmail = process.env.ADMIN_EMAIL || 'giftedhandsventures@rentals.co.ke';
+      const adminPassword = process.env.ADMIN_PASSWORD || 'wekesa22240331';
       const passwordHash = await bcrypt.hash(adminPassword, 12);
       await Admin.create({
         email: adminEmail.toLowerCase().trim(),
