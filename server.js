@@ -117,5 +117,5 @@ const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📌 Admin: ${process.env.ADMIN_EMAIL || 'admin@rentals.co.ke'}`);
+  console.log(`📌 Admin: ${process.env.ADMIN_EMAIL || 'giftedhandsventures.co.ke'}`);
 });
