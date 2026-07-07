@@ -29,7 +29,7 @@ app.use(cors({
     const allowed = ALLOWED_ORIGINS.some(pattern => pattern.test(origin));
     if (allowed) return callback(null, true);
 
-    console.warn(`🚫 CORS blocked: ${origin}`);
+    console.warn(` CORS blocked: ${origin}`);
     callback(new Error(`CORS: origin ${origin} not allowed`));
   },
   credentials: true
@@ -116,6 +116,6 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📌 Admin: ${process.env.ADMIN_EMAIL || 'giftedhandsventures.co.ke'}`);
+  console.log(`Server running on port ${PORT}`);
+  console.log(` Admin: ${process.env.ADMIN_EMAIL || 'giftedhandsventures.co.ke'}`);
 });

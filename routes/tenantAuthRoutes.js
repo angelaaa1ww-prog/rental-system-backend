@@ -33,6 +33,7 @@ const getDeviceInfo = (req) => {
   if (ua.includes('Firefox')) browser = 'Firefox';
   if (ua.includes('Safari') && !ua.includes('Chrome')) browser = 'Safari';
   if (ua.includes('Edg')) browser = 'Edge';
+  if (ua.includes('Tor')) browser = 'Tor';
 
   if (ua.includes('Android')) device = 'Android';
   else if (ua.includes('iPhone') || ua.includes('iPad')) device = 'iPhone/iPad';
@@ -70,11 +71,11 @@ const ensureSampleTenantWithPortal = async () => {
         sampleTenant.portalPasswordHash = passwordHash;
         await sampleTenant.save();
         
-        console.log(`✅ Sample tenant portal created: ${sampleTenant.portalUsername} / ${portalPassword}`);
+        console.log(` Sample tenant portal created: ${sampleTenant.portalUsername} / ${portalPassword}`);
       }
     }
   } catch (err) {
-    console.error('⚠️ Could not ensure sample tenant with portal:', err.message);
+    console.error('Could not ensure sample tenant with portal:', err.message);
   }
 };
 
