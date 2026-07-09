@@ -2,7 +2,11 @@ import React, { useEffect, useState, useRef } from 'react';
 import { modernTheme } from '../theme-modern';
 
 const T = modernTheme;
-const ALLOWED_EMAIL = 'isowekesa@gmail.com';
+const DEFAULT_ALLOWED_EMAIL = 'isowekesa@gmail.com';
+const ALLOWED_EMAILS = (process.env.REACT_APP_AUTHORIZED_EMAILS || DEFAULT_ALLOWED_EMAIL)
+  .split(',')
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
 const GOOGLE_LOAD_TIMEOUT_MS = 10000;
 const GOOGLE_POLL_INTERVAL_MS = 200;
 
@@ -98,9 +102,9 @@ export function GoogleAuthComponent({ onSuccess }) {
 
       const userData = JSON.parse(jsonPayload);
 
-      // Verify email
-      if (userData.email !== ALLOWED_EMAIL) {
-        setError(`Access denied. Only ${ALLOWED_EMAIL} is authorized.`);
+      // Verify email against the allowed list
+      if (!ALLOWED_EMAILS.includes((userData.email || '').toLowerCase())) {
+        setError('Access denied. This Google account is not authorized.');
         setIsLoading(false);
         return;
       }
