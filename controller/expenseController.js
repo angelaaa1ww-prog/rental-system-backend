@@ -134,7 +134,7 @@ exports.createExpense = async (req, res) => {
         : [],
       notes: notes ? notes.trim() : null,
       attachments: Array.isArray(attachments)
-        ? attachments.filteratt => att.url && att.url.trim().length > 0)
+        ? attachments.filter(att => att.url && att.url.trim().length > 0)
           .map(att => ({
             url: att.url.trim(),
             description: att.description ? att.description.trim() : null,

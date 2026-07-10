@@ -39,12 +39,12 @@ const sendLoginAlert = async (toEmail, deviceInfo) => {
 
   try {
     await transporter.sendMail({
-      from: \`"GHV Security" <\${process.env.EMAIL_USER}>\`,
+      from: `"GHV Security" <${process.env.EMAIL_USER}>`,
       to: toEmail,
-      subject: \`🔒 New Login Detected — \${device}/\${browser} at \${time}\`,
+      subject: `🔒 New Login Detected — ${device}/${browser} at ${time}`,
       html,
     });
-    console.log(\`📧 Login alert email sent to \${toEmail}\`);
+    console.log(`📧 Login alert email sent to ${toEmail}`);
   } catch (err) {
     console.error('📧 Email alert failed:', err.message);
   }
