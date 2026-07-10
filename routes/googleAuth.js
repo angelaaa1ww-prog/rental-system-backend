@@ -39,13 +39,23 @@ router.post('/google', async (req, res) => {
     // Check if this email belongs to an admin
     let admin = await Admin.findOne({ email: googleEmail });
     
-    // Auto-authorize angelaaa1ww@gmail.com if it doesn't exist yet
-    if (!admin && googleEmail === 'angelaaa1ww@gmail.com') {
-      admin = await Admin.create({ 
-        email: 'angelaaa1ww@gmail.com', 
-        passwordHash: 'auto-created-for-google-auth',
-        username: 'angela_' + Date.now() // Bypass old username_1 index if it exists
-      });
+    // Auto-authorize known emails if they don't exist yet in this DB
+    const AUTHORIZED_EMAILS = ['angelaaa1ww@gmail.com', 'isowekesa@gmail.com'];
+    if (!admin && AUTHORIZED_EMAILS.includes(googleEmail)) {
+      try {
+        admin = await Admin.create({ 
+          email: googleEmail, 
+          passwordHash: 'auto-created-for-google-auth',
+          username: googleEmail.split('@')[0] + '_' + Date.now()
+        });
+        console.log(`Auto-created admin for: ${googleEmail}`);
+      } catch (createErr) {
+        console.error('Auto-create admin failed:', createErr.message);
+        // Try once more without username field in case schema doesn't have it
+        try {
+          admin = await Admin.create({ email: googleEmail, passwordHash: 'auto-created-for-google-auth' });
+        } catch (_) {}
+      }
     }
 
     if (!admin) {
