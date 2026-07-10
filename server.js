@@ -20,6 +20,8 @@ const ALLOWED_ORIGINS = [
   /^https:\/\/giftedhandsventures\.vercel\.app$/,
   /^https:\/\/rental-system-frontend[^.]*\.vercel\.app$/,
   /^https:\/\/[^.]*angelaaa1ww-progs-projects\.vercel\.app$/,
+  /^https:\/\/(www\.)?giftedhandsventure\.com$/,
+  /^https:\/\/(www\.)?giftedhandsventures\.com$/
 ];
 
 app.use(cors({
