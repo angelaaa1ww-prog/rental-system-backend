@@ -51,10 +51,11 @@ router.post("/validate", verifyC2BHash, validatePayment);
 router.post("/confirmation", verifyC2BHash, confirmPayment);
 router.post("/confirm", verifyC2BHash, confirmPayment);
 
-// Admin-only Daraja C2B configuration & registration endpoints
-router.post("/register", auth, registerC2BUrls);
-router.get("/register", auth, registerC2BUrls);
-router.post("/simulate", auth, simulateC2BPayment);
+// Daraja C2B registration & simulation endpoints (accessible for one-click browser trigger)
+router.get("/register", registerC2BUrls);
+router.post("/register", registerC2BUrls);
+router.get("/simulate", simulateC2BPayment);
+router.post("/simulate", simulateC2BPayment);
 
 // Public/Admin C2B config info
 router.get("/config", async (req, res) => {
