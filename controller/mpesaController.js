@@ -315,8 +315,17 @@ exports.simulateC2BPayment = async (req, res) => {
     const source = { ...(req.query || {}), ...(req.body || {}) };
     const amount = source.amount || 1000;
     const phone = source.phone || process.env.MPESA_TEST_MSISDN || "254708374149";
-    const billRefNumber = source.billRefNumber || "1183070#A101";
     const commandId = source.commandId || "CustomerPayBillOnline";
+
+    let billRefNumber = source.billRefNumber;
+    if (!billRefNumber) {
+      const activeTenant = await Tenant.findOne({ active: true }).populate("house");
+      if (activeTenant && activeTenant.house) {
+        billRefNumber = `1183070#${activeTenant.house.houseNumber}`;
+      } else {
+        billRefNumber = "1183070#A101";
+      }
+    }
 
     const result = await mpesa.simulateC2BPayment({
       amount,

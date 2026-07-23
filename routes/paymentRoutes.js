@@ -52,7 +52,11 @@ router.post('/', auth, async (req, res) => {
 router.get('/', auth, async (req, res) => {
   try {
     const payments = await Payment.find()
-      .populate('tenant', 'name phone')
+      .populate({
+        path: 'tenant',
+        select: 'name phone house idNumber',
+        populate: { path: 'house', select: 'houseNumber apartment rent' }
+      })
       .sort({ createdAt: -1 });
 
     return res.json(payments || []);
