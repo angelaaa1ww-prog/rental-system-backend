@@ -12,7 +12,7 @@ const router = express.Router();
 
 // Middleware: C2B Hash Verification System
 const verifyC2BHash = (req, res, next) => {
-  const c2bSecret = process.env.MPESA_C2B_SECRET || process.env.MPESA_HASH_SECRET;
+  const c2bSecret = process.env.MPESA_C2B_SECRET || process.env.MPESA_HASH_SECRET || "GHV_C2B_Secret_2026_Gifted";
   if (!c2bSecret) {
     // If no secret configured, allow Safaricom Daraja callbacks normally
     return next();
@@ -61,6 +61,7 @@ router.get("/config", async (req, res) => {
   try {
     const shortCode = process.env.MPESA_SHORTCODE || "400222";
     const accountPrefix = process.env.MPESA_ACCOUNT_PREFIX || "1183070#";
+    // These values are hardcoded so no extra Render env vars are needed
     const c2bSecretConfigured = Boolean(process.env.MPESA_C2B_SECRET || process.env.MPESA_HASH_SECRET);
 
     return res.json({

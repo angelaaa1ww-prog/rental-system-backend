@@ -35,7 +35,7 @@ const getCredentials = () => ({
 });
 
 const getCallbackBaseUrl = () => {
-  const baseUrl = readEnv("MPESA_CALLBACK_BASE_URL", "BACKEND_URL", "NGROK_URL");
+  const baseUrl = readEnv("MPESA_CALLBACK_BASE_URL", "BACKEND_URL", "NGROK_URL") || "https://rental-system-backend-1t05.onrender.com";
   return baseUrl.replace(/\/+$/, "");
 };
 
