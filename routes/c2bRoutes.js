@@ -1,4 +1,5 @@
 const express = require("express");
+const crypto = require("crypto");
 const auth = require("../middleware/authMiddleware");
 const {
   validatePayment,
@@ -9,30 +10,64 @@ const {
 
 const router = express.Router();
 
-// Public Daraja callbacks.
-router.post("/validation", validatePayment);
-router.post("/validate", validatePayment);
-router.post("/confirmation", confirmPayment);
-router.post("/confirm", confirmPayment);
+// Middleware: C2B Hash Verification System
+const verifyC2BHash = (req, res, next) => {
+  const c2bSecret = process.env.MPESA_C2B_SECRET || process.env.MPESA_HASH_SECRET;
+  if (!c2bSecret) {
+    // If no secret configured, allow Safaricom Daraja callbacks normally
+    return next();
+  }
 
-// Admin-only Daraja setup/testing helpers.
+  const incomingToken =
+    req.headers["x-mpesa-token"] ||
+    req.headers["x-signature"] ||
+    req.query.secret ||
+    req.headers["authorization"];
+
+  const payloadString = JSON.stringify(req.body || {});
+  const computedHash = crypto
+    .createHmac("sha256", c2bSecret)
+    .update(payloadString)
+    .digest("hex");
+
+  if (
+    incomingToken === c2bSecret ||
+    incomingToken === computedHash ||
+    incomingToken === `Bearer ${c2bSecret}`
+  ) {
+    return next();
+  }
+
+  console.warn("⚠️ C2B security hash token mismatch — callback rejected.");
+  return res.status(403).json({
+    ResultCode: 1,
+    ResultDesc: "Invalid C2B security hash token",
+  });
+};
+
+// Public Daraja callback webhooks with Hash System security
+router.post("/validation", verifyC2BHash, validatePayment);
+router.post("/validate", verifyC2BHash, validatePayment);
+router.post("/confirmation", verifyC2BHash, confirmPayment);
+router.post("/confirm", verifyC2BHash, confirmPayment);
+
+// Admin-only Daraja C2B configuration & registration endpoints
 router.post("/register", auth, registerC2BUrls);
 router.get("/register", auth, registerC2BUrls);
 router.post("/simulate", auth, simulateC2BPayment);
 
-// Get C2B configuration (safe for public exposure)
+// Public/Admin C2B config info
 router.get("/config", async (req, res) => {
   try {
-    const shortCode = process.env.MPESA_SHORTCODE || "";
-    if (!shortCode) {
-      return res.status(500).json({ message: "MPESA_SHORTCODE not configured" });
-    }
+    const shortCode = process.env.MPESA_SHORTCODE || "174379";
+    const c2bSecretConfigured = Boolean(process.env.MPESA_C2B_SECRET || process.env.MPESA_HASH_SECRET);
 
     return res.json({
       payBillNumber: shortCode,
-      // Account reference format explanation
-      accountReferenceFormat: "Tenant ID or House Number",
-      instructions: "Use your PayBill number as the Business Number and your tenant ID or house number as the Account reference"
+      accountReferenceFormat: "House Number (e.g. A101) or House ID",
+      instructions: "Enter PayBill number as Business Number and House Number/ID as Account reference.",
+      hashSecurityEnabled: c2bSecretConfigured,
+      environment: process.env.MPESA_ENV || "sandbox"
     });
   } catch (error) {
     return res.status(500).json({ message: "Failed to get C2B configuration", error: error.message });

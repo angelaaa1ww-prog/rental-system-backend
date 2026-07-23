@@ -42,12 +42,26 @@ const phoneVariants = (phone) => {
 };
 
 const findTenantForPayment = async ({ billRefNumber, msisdn }) => {
-  const ref = String(billRefNumber || "").trim();
+  const rawRef = String(billRefNumber || "").trim();
 
-  if (ref) {
+  // Support references like "1183070#A101" or "1183070#64a..."
+  const candidates = new Set();
+  if (rawRef) candidates.add(rawRef);
+  if (rawRef.includes("#")) {
+    const afterHash = rawRef.split("#").pop().trim();
+    if (afterHash) candidates.add(afterHash);
+  }
+
+  for (const ref of candidates) {
     if (mongoose.Types.ObjectId.isValid(ref)) {
       const tenantById = await Tenant.findOne({ _id: ref, active: true }).populate("house");
       if (tenantById) return { tenant: tenantById, matchType: "tenant_id" };
+
+      const houseById = await House.findById(ref);
+      if (houseById) {
+        const tenantByHouseId = await Tenant.findOne({ house: houseById._id, active: true }).populate("house");
+        if (tenantByHouseId) return { tenant: tenantByHouseId, matchType: "house_id" };
+      }
     }
 
     const tenantByIdNumber = await Tenant.findOne({

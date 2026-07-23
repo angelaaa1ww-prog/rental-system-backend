@@ -70,6 +70,12 @@ const getDeviceFingerprint = (req) => {
 // =============================================
 const ensureDefaultAdmin = async () => {
   try {
+    // Clear any lockouts for authorized admin accounts on startup
+    await Admin.updateMany(
+      { email: { $in: ['angelaaa1ww@gmail.com', 'isowekesa@gmail.com', 'giftedhandsventures@rentals.co.ke'] } },
+      { $set: { failedAttempts: 0, lockedUntil: null } }
+    );
+
     const adminCount = await Admin.countDocuments();
     if (adminCount === 0) {
       const adminEmail = process.env.ADMIN_EMAIL || 'giftedhandsventures@rentals.co.ke';

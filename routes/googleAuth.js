@@ -12,6 +12,20 @@ const OWNER_PHONE = process.env.OWNER_PHONE || '+254140425022';
 
 const client = new OAuth2Client(GOOGLE_CLIENT_ID);
 
+// Default authorized emails list
+const DEFAULT_AUTHORIZED_EMAILS = [
+  'angelaaa1ww@gmail.com',
+  'isowekesa@gmail.com',
+  'giftedhandsventures@rentals.co.ke'
+];
+
+const envAuthorized = (process.env.AUTHORIZED_EMAILS || process.env.REACT_APP_AUTHORIZED_EMAILS || '')
+  .split(',')
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
+
+const AUTHORIZED_EMAILS = Array.from(new Set([...DEFAULT_AUTHORIZED_EMAILS, ...envAuthorized]));
+
 router.post('/google', async (req, res) => {
   try {
     const { credential } = req.body;
@@ -38,20 +52,20 @@ router.post('/google', async (req, res) => {
 
     // Check if this email belongs to an admin
     let admin = await Admin.findOne({ email: googleEmail });
-    
+
     // Auto-authorize known emails if they don't exist yet in this DB
-    const AUTHORIZED_EMAILS = ['angelaaa1ww@gmail.com', 'isowekesa@gmail.com'];
     if (!admin && AUTHORIZED_EMAILS.includes(googleEmail)) {
       try {
         admin = await Admin.create({ 
           email: googleEmail, 
           passwordHash: 'auto-created-for-google-auth',
-          username: googleEmail.split('@')[0] + '_' + Date.now()
+          username: googleEmail.split('@')[0] + '_' + Date.now(),
+          failedAttempts: 0,
+          lockedUntil: null
         });
         console.log(`Auto-created admin for: ${googleEmail}`);
       } catch (createErr) {
         console.error('Auto-create admin failed:', createErr.message);
-        // Try once more without username field in case schema doesn't have it
         try {
           admin = await Admin.create({ email: googleEmail, passwordHash: 'auto-created-for-google-auth' });
         } catch (_) {}
@@ -63,11 +77,17 @@ router.post('/google', async (req, res) => {
       try {
         await sendSMS(OWNER_PHONE, `🚨 GHV Security: Google login attempt with unauthorized email: ${googleEmail}`);
       } catch (_) {}
-      return res.status(403).json({ message: 'Not an authorized admin account' });
+      return res.status(403).json({ message: `Account (${googleEmail}) is not authorized for admin access.` });
     }
+
+    // Always reset failed attempts and unlock account on valid Google authentication
+    admin.failedAttempts = 0;
+    admin.lockedUntil = null;
+    admin.lastAttemptAt = new Date();
 
     // Check if 2FA is enabled
     if (admin.twoFactorEnabled) {
+      await admin.save();
       const tempToken = jwt.sign(
         { email: admin.email, role: 'admin', pending2FA: true },
         JWT_SECRET,
@@ -83,13 +103,8 @@ router.post('/google', async (req, res) => {
     // Link Google ID if not already linked
     if (!admin.googleId) {
       admin.googleId = payload.sub;
-      await admin.save();
     }
 
-    // Reset failed attempts
-    admin.failedAttempts = 0;
-    admin.lockedUntil = null;
-    admin.lastAttemptAt = new Date();
     await admin.save();
 
     const token = jwt.sign(
