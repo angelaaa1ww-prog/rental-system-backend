@@ -312,16 +312,22 @@ exports.registerC2BUrls = async (req, res) => {
 
 exports.simulateC2BPayment = async (req, res) => {
   try {
-    const { amount, phone, billRefNumber, commandId } = req.body;
+    const source = { ...(req.query || {}), ...(req.body || {}) };
+    const amount = source.amount || 1000;
+    const phone = source.phone || process.env.MPESA_TEST_MSISDN || "254708374149";
+    const billRefNumber = source.billRefNumber || "1183070#A101";
+    const commandId = source.commandId || "CustomerPayBillOnline";
+
     const result = await mpesa.simulateC2BPayment({
       amount,
-      phone: phone || process.env.MPESA_TEST_MSISDN || "254708374149",
+      phone,
       billRefNumber,
       commandId,
     });
 
     return res.json({
-      message: "C2B sandbox simulation sent",
+      message: "C2B sandbox simulation sent successfully!",
+      simulatedDetails: { amount, phone, billRefNumber },
       ...result,
     });
   } catch (error) {
