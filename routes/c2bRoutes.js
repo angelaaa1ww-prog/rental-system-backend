@@ -59,13 +59,15 @@ router.post("/simulate", auth, simulateC2BPayment);
 // Public/Admin C2B config info
 router.get("/config", async (req, res) => {
   try {
-    const shortCode = process.env.MPESA_SHORTCODE || "174379";
+    const shortCode = process.env.MPESA_SHORTCODE || "400222";
+    const accountPrefix = process.env.MPESA_ACCOUNT_PREFIX || "1183070#";
     const c2bSecretConfigured = Boolean(process.env.MPESA_C2B_SECRET || process.env.MPESA_HASH_SECRET);
 
     return res.json({
       payBillNumber: shortCode,
-      accountReferenceFormat: "House Number (e.g. A101) or House ID",
-      instructions: "Enter PayBill number as Business Number and House Number/ID as Account reference.",
+      accountPrefix,
+      accountReferenceFormat: `${accountPrefix}<HouseNumber> (e.g. ${accountPrefix}A101) or ${accountPrefix}<HouseID>`,
+      instructions: `Use PayBill Business Number ${shortCode} and Account ${accountPrefix}<HouseNumber> (e.g., ${accountPrefix}A101)`,
       hashSecurityEnabled: c2bSecretConfigured,
       environment: process.env.MPESA_ENV || "sandbox"
     });
