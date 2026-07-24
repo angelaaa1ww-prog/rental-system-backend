@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'secret';
+const JWT_SECRET = process.env.JWT_SECRET || 'rental_super_secret_jwt_2026_change_me';
 
 // =============================================
 // AUTH MIDDLEWARE

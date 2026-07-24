@@ -38,8 +38,72 @@ app.use(cors({
 }));
 
 /* =========================
-   MIDDLEWARE
+   SECURITY MIDDLEWARE
 ========================= */
+// 1. Security Headers (Clickjacking, MIME Sniffing, XSS protection)
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  res.setHeader("X-Download-Options", "noopen");
+  res.setHeader("X-Permitted-Cross-Domain-Policies", "none");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  next();
+});
+
+// 2. NoSQL Injection Prevention Middleware
+const sanitizeObject = (obj) => {
+  if (!obj || typeof obj !== "object") return obj;
+  for (const key of Object.keys(obj)) {
+    if (key.startsWith("$") || key.includes(".")) {
+      delete obj[key];
+    } else if (typeof obj[key] === "object") {
+      sanitizeObject(obj[key]);
+    }
+  }
+  return obj;
+};
+
+app.use((req, res, next) => {
+  if (req.body) sanitizeObject(req.body);
+  if (req.query) sanitizeObject(req.query);
+  if (req.params) sanitizeObject(req.params);
+  next();
+});
+
+// 3. In-Memory Rate Limiter against Brute-Force Password & Auth Attacks
+const ipAttemptsMap = new Map();
+const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const MAX_ATTEMPTS_PER_WINDOW = 20;
+
+const authRateLimiter = (req, res, next) => {
+  const ip = req.ip || req.headers["x-forwarded-for"] || "unknown-ip";
+  const now = Date.now();
+  const record = ipAttemptsMap.get(ip) || { count: 0, firstAttempt: now };
+
+  if (now - record.firstAttempt > RATE_LIMIT_WINDOW_MS) {
+    record.count = 1;
+    record.firstAttempt = now;
+  } else {
+    record.count += 1;
+  }
+
+  ipAttemptsMap.set(ip, record);
+
+  if (record.count > MAX_ATTEMPTS_PER_WINDOW) {
+    console.warn(`🚨 Rate limit exceeded for IP: ${ip}`);
+    return res.status(429).json({
+      message: "Too many login attempts. Please try again after 15 minutes."
+    });
+  }
+
+  next();
+};
+
+app.use("/api/auth", authRateLimiter);
+app.use("/api/google-auth", authRateLimiter);
+
 app.use(express.json());
 
 /* =========================
