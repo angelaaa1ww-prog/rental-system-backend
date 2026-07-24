@@ -137,7 +137,32 @@ router.get('/balances', auth, async (req, res) => {
 });
 
 // =====================
-// DELETE PAYMENT
+// CLEAR / BULK DELETE PAYMENTS
+// =====================
+router.post('/bulk-delete', auth, async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: 'Array of payment ids is required' });
+    }
+    await Payment.deleteMany({ _id: { $in: ids } });
+    return res.json({ message: `Successfully deleted ${ids.length} payment records` });
+  } catch (err) {
+    return res.status(500).json({ message: 'Failed to delete selected payments', error: err.message });
+  }
+});
+
+router.delete('/clear/all', auth, async (req, res) => {
+  try {
+    await Payment.deleteMany({});
+    return res.json({ message: 'All payment history cleared successfully' });
+  } catch (err) {
+    return res.status(500).json({ message: 'Failed to clear payment records', error: err.message });
+  }
+});
+
+// =====================
+// DELETE SINGLE PAYMENT
 // =====================
 router.delete('/:id', auth, async (req, res) => {
   try {
